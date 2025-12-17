@@ -3,78 +3,69 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>lexoffice Angebots-Tool</title>
+  <title>lexoffice Tool</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 900px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    button.primary { background: #111; color: #fff; }
-    input[type="file"] { padding: 10px; width: 100%; }
-    .status { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 10px; margin-top: 12px; }
+    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 800px; }
+    .box { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #999; cursor: pointer; }
+    .primary { background:#000; color:#fff; }
+    .status { white-space: pre-wrap; background:#f6f6f6; padding:12px; margin-top:10px; border-radius:8px; }
   </style>
 </head>
 <body>
 
-<h1>lexoffice Angebots-Tool</h1>
+<h2>lexoffice Angebots-Tool</h2>
 
-<div class="card">
-  <h3>1) Vorlage herunterladen</h3>
+<div class="box">
   <button onclick="location.href='/download-template-with-articles'">
-    Excel-Vorlage laden
+    Vorlage herunterladen
   </button>
 </div>
 
-<div class="card">
-  <h3>2) Excel prüfen / Angebot erzeugen</h3>
+<div class="box">
   <input id="file" type="file" accept=".xlsx"><br><br>
-
   <label>
     <input id="testmode" type="checkbox" checked>
-    Testmodus (nur prüfen, kein Angebot anlegen)
+    Testmodus
   </label><br><br>
-
-  <button class="primary" onclick="upload()">Ausführen</button>
-
-  <div class="status" id="status">Status: bereit</div>
+  <button class="primary" onclick="run()">Ausführen</button>
+  <div id="status" class="status">bereit</div>
 </div>
 
 <script>
-async function upload() {
-  const f = document.getElementById('file').files[0];
-  if (!f) {
-    alert("Bitte Excel-Datei auswählen");
-    return;
-  }
+async function run() {
+  const f = document.getElementById("file").files[0];
+  if (!f) { alert("Excel wählen"); return; }
 
-  const testmode = document.getElementById('testmode').checked;
-  const url = testmode ? "/validate-excel" : "/create-quote-from-excel";
+  const test = document.getElementById("testmode").checked;
+  const url = test ? "/validate-excel" : "/create-quote-from-excel";
 
   const fd = new FormData();
   fd.append("file", f);
 
-  document.getElementById("status").textContent = "Verarbeitung…";
-
-  const r = await fetch(url, { method: "POST", body: fd });
+  status("Verarbeitung…");
+  const r = await fetch(url, { method:"POST", body:fd });
 
   if (!r.ok) {
     const e = await r.json();
-    document.getElementById("status").textContent =
-      "Fehler:\n" + e.message;
+    status("Fehler:\n" + (e.message || "unbekannt"));
     return;
   }
 
-  if (testmode) {
+  if (test) {
     const d = await r.json();
-    document.getElementById("status").textContent =
-      "OK – Testmodus\n\n" + JSON.stringify(d.summary, null, 2);
+    status("OK\n\n" + JSON.stringify(d.summary, null, 2));
   } else {
     const blob = await r.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "Angebot.pdf";
     a.click();
+    status("PDF erstellt");
   }
 }
+
+function status(t){ document.getElementById("status").textContent = t; }
 </script>
 
 </body>
