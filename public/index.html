@@ -1,2 +1,81 @@
 <!doctype html>
-<html><body><h1>lexoffice Angebots-Tool</h1><p>Upload & Testmodus integriert</p></body></html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>lexoffice Angebots-Tool</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 900px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    button.primary { background: #111; color: #fff; }
+    input[type="file"] { padding: 10px; width: 100%; }
+    .status { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 10px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<h1>lexoffice Angebots-Tool</h1>
+
+<div class="card">
+  <h3>1) Vorlage herunterladen</h3>
+  <button onclick="location.href='/download-template-with-articles'">
+    Excel-Vorlage laden
+  </button>
+</div>
+
+<div class="card">
+  <h3>2) Excel prüfen / Angebot erzeugen</h3>
+  <input id="file" type="file" accept=".xlsx"><br><br>
+
+  <label>
+    <input id="testmode" type="checkbox" checked>
+    Testmodus (nur prüfen, kein Angebot anlegen)
+  </label><br><br>
+
+  <button class="primary" onclick="upload()">Ausführen</button>
+
+  <div class="status" id="status">Status: bereit</div>
+</div>
+
+<script>
+async function upload() {
+  const f = document.getElementById('file').files[0];
+  if (!f) {
+    alert("Bitte Excel-Datei auswählen");
+    return;
+  }
+
+  const testmode = document.getElementById('testmode').checked;
+  const url = testmode ? "/validate-excel" : "/create-quote-from-excel";
+
+  const fd = new FormData();
+  fd.append("file", f);
+
+  document.getElementById("status").textContent = "Verarbeitung…";
+
+  const r = await fetch(url, { method: "POST", body: fd });
+
+  if (!r.ok) {
+    const e = await r.json();
+    document.getElementById("status").textContent =
+      "Fehler:\n" + e.message;
+    return;
+  }
+
+  if (testmode) {
+    const d = await r.json();
+    document.getElementById("status").textContent =
+      "OK – Testmodus\n\n" + JSON.stringify(d.summary, null, 2);
+  } else {
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "Angebot.pdf";
+    a.click();
+  }
+}
+</script>
+
+</body>
+</html>
