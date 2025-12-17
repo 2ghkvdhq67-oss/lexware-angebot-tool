@@ -1,16 +1,15 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>lexoffice Tool</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 800px; }
-    .box { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #999; cursor: pointer; }
-    .primary { background:#000; color:#fff; }
-    .status { white-space: pre-wrap; background:#f6f6f6; padding:12px; margin-top:10px; border-radius:8px; }
-  </style>
+<meta charset="utf-8">
+<title>lexoffice Tool</title>
+<style>
+body{font-family:system-ui;margin:24px;max-width:800px}
+.box{border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:16px}
+button{padding:10px 14px;border-radius:8px;border:1px solid #999}
+.primary{background:#000;color:#fff}
+pre{background:#f6f6f6;padding:12px;border-radius:8px}
+</style>
 </head>
 <body>
 
@@ -20,52 +19,31 @@
   <button onclick="location.href='/download-template-with-articles'">
     Vorlage herunterladen
   </button>
+  <button onclick="apiTest()">API testen</button>
 </div>
 
 <div class="box">
   <input id="file" type="file" accept=".xlsx"><br><br>
-  <label>
-    <input id="testmode" type="checkbox" checked>
-    Testmodus
-  </label><br><br>
+  <label><input id="testmode" type="checkbox" checked> Testmodus</label><br><br>
   <button class="primary" onclick="run()">Ausführen</button>
-  <div id="status" class="status">bereit</div>
+  <pre id="out">bereit</pre>
 </div>
 
 <script>
-async function run() {
-  const f = document.getElementById("file").files[0];
-  if (!f) { alert("Excel wählen"); return; }
-
-  const test = document.getElementById("testmode").checked;
-  const url = test ? "/validate-excel" : "/create-quote-from-excel";
-
-  const fd = new FormData();
-  fd.append("file", f);
-
-  status("Verarbeitung…");
-  const r = await fetch(url, { method:"POST", body:fd });
-
-  if (!r.ok) {
-    const e = await r.json();
-    status("Fehler:\n" + (e.message || "unbekannt"));
-    return;
-  }
-
-  if (test) {
-    const d = await r.json();
-    status("OK\n\n" + JSON.stringify(d.summary, null, 2));
-  } else {
-    const blob = await r.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "Angebot.pdf";
-    a.click();
-    status("PDF erstellt");
-  }
+async function apiTest(){
+  const r=await fetch('/api-test'); 
+  out.textContent=JSON.stringify(await r.json(),null,2);
 }
-
-function status(t){ document.getElementById("status").textContent = t; }
+async function run(){
+  const f=file.files[0]; if(!f)return alert("Excel wählen");
+  const url=testmode.checked?'/validate-excel':'/create-quote-from-excel';
+  const fd=new FormData(); fd.append('file',f);
+  out.textContent="läuft…";
+  const r=await fetch(url,{method:'POST',body:fd});
+  out.textContent=r.ok
+    ? JSON.stringify(await r.json(),null,2)
+    : "Fehler";
+}
 </script>
 
 </body>
