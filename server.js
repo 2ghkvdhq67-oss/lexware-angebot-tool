@@ -48,7 +48,7 @@ function successResponse(action, extra = {}) {
   };
 }
 
-// --------- Helper: alle Artikel holen (paging) ---------
+// --------- Helper: alle Artikel holen (Paging) ---------
 async function fetchAllArticles() {
   if (!process.env.LEXWARE_API_KEY) {
     // Ohne API-Key können wir keine Artikel holen
@@ -59,8 +59,7 @@ async function fetchAllArticles() {
   let page = 0;
   const pageSize = 100;
 
-  // einfache Paging-Schleife mit Sicherheitslimit
-  // siehe Doku: GET {resourceurl}/v1/articles?page=0&size=...
+  // Paging-Schleife mit Sicherheitslimit
   while (true) {
     const url = `${BASE_URL}/v1/articles?page=${page}&size=${pageSize}`;
     const res = await fetch(url, {
@@ -87,13 +86,13 @@ async function fetchAllArticles() {
     if (totalPages !== null && page >= totalPages - 1) break;
 
     page += 1;
-    if (page > 50) break; // hartes Sicherheitslimit (max. ~5.000 Artikel)
+    if (page > 50) break; // hartes Sicherheitslimit (~5.000 Artikel)
   }
 
   return articles;
 }
 
-// --------- Template Download (mit Artikel-Lookup) ---------
+// --------- Template Download (mit Artikel-Lookup + Anleitung) ---------
 app.get("/download-template-with-articles", async (_req, res) => {
   const p = path.resolve("./templates/Lexware_Template.xlsx");
   if (!fs.existsSync(p)) {
@@ -120,7 +119,7 @@ app.get("/download-template-with-articles", async (_req, res) => {
     });
   }
 
-  // Versuchen, Artikel aus Lexware zu holen – bei Fehler einfach ungefülltes Template liefern
+  // Versuchen, Artikel aus Lexoffice zu holen – bei Fehler Template trotzdem liefern
   try {
     const articles = await fetchAllArticles();
 
@@ -154,11 +153,63 @@ app.get("/download-template-with-articles", async (_req, res) => {
         wb.SheetNames.push(sheetName);
       }
     } else {
-      console.log("Keine Artikel aus Lexware erhalten – Artikel-Lookup bleibt leer.");
+      console.log("Keine Artikel aus Lexoffice erhalten – Artikel-Lookup bleibt leer.");
     }
   } catch (e) {
     console.error("Fehler beim Laden der Artikel für das Template:", e);
-    // Fallback: trotzdem Template ausliefern, nur ohne Artikel
+    // Fallback: trotzdem Template ausliefern
+  }
+
+  // NEU: Anleitung-Tab mit kurzen Erklärungen
+  try {
+    const helpSheetName = "Anleitung";
+    const helpData = [
+      ["Bereich", "Feld", "Hinweis"],
+      [
+        "Positionen",
+        "type",
+        "Mögliche Werte: custom, service, material, text. 'material' = Artikel aus Lexoffice, 'text' = reine Infozeile ohne Preis."
+      ],
+      [
+        "Positionen",
+        "articleId",
+        "Pflicht, wenn type = material. Lexoffice-Artikel-ID aus Tab 'Artikel-Lookup' übernehmen."
+      ],
+      [
+        "Positionen",
+        "quantity / qty",
+        "Menge der Position. Muss größer als 0 sein."
+      ],
+      [
+        "Positionen",
+        "unitPriceAmount / price",
+        "Einzelpreis je Einheit. Darf nicht kleiner als 0 sein. Komma oder Punkt möglich (z.B. 6,9)."
+      ],
+      [
+        "Angebot",
+        "taxType",
+        "Pflichtfeld. Übliche Werte: 'net' oder 'gross' (Netto-/Brutto-Angebot)."
+      ],
+      [
+        "Kunde",
+        "name",
+        "Pflichtfeld. Name der Firma oder der Person, an die das Angebot geht."
+      ],
+      [
+        "Allgemein",
+        "",
+        "Bitte die Struktur des Templates nicht verändern (Sheetnamen, Spaltenüberschriften)."
+      ]
+    ];
+
+    const wsHelp = xlsx.utils.aoa_to_sheet(helpData);
+    wb.Sheets[helpSheetName] = wsHelp;
+    if (!wb.SheetNames.includes(helpSheetName)) {
+      wb.SheetNames.push(helpSheetName);
+    }
+  } catch (e) {
+    console.error("Fehler beim Erzeugen der Anleitung-Tabelle:", e);
+    // Template trotzdem ausliefern
   }
 
   // Workbook zurück an den Browser
@@ -171,7 +222,7 @@ app.get("/download-template-with-articles", async (_req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="Lexware_Template_mit_Artikeln.xlsx"'
+      'attachment; filename="Lexoffice_Template_mit_Artikeln.xlsx"'
     );
     return res.send(outBuf);
   } catch (e) {
