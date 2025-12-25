@@ -57,28 +57,29 @@ function parseNumberValue(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
-// helper: Excel einlesen & validieren, für Test & Live wiederverwendbar
-function parseAndValidateExcel(buffer) {
+// ------------------ TESTMODUS: nur prüfen ------------------
+app.post("/validate-excel", upload.single("file"), (req, res) => {
+  if (!req.file)
+    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
+
   let wb;
   try {
-    wb = xlsx.read(buffer, { type:"buffer" });
+    wb = xlsx.read(req.file.buffer, { type:"buffer" });
   } catch {
-    return {
+    return res.status(400).json({
       ok:false,
-      status:400,
-      error:{ ok:false, message:"Excel-Datei kann nicht gelesen werden" }
-    };
+      message:"Excel-Datei kann nicht gelesen werden"
+    });
   }
 
   // Pflicht-Sheets
   for (const s of ["Angebot","Kunde","Positionen"]) {
-    if (!wb.Sheets[s]) {
-      return {
+    if (!wb.Sheets[s])
+      return res.status(422).json({
         ok:false,
-        status:422,
-        error:{ ok:false, message:`Tabelle fehlt: ${s}`, details:{ sheet:s } }
-      };
-    }
+        message:`Tabelle fehlt: ${s}`,
+        details:{ sheet:s }
+      });
   }
 
   // Angebot
@@ -86,109 +87,209 @@ function parseAndValidateExcel(buffer) {
     xlsx.utils.sheet_to_json(wb.Sheets["Angebot"], { header:1, defval:"" })
       .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
   );
-  if (!angebot.taxType) {
-    return {
+  if (!angebot.taxType)
+    return res.status(422).json({
       ok:false,
-      status:422,
-      error:{ ok:false, message:"Feld fehlt: Angebot.taxType", details:{sheet:"Angebot", field:"taxType"} }
-    };
-  }
+      message:"Feld fehlt: Angebot.taxType",
+      details:{sheet:"Angebot", field:"taxType"}
+    });
 
   // Kunde
   const kunde = Object.fromEntries(
     xlsx.utils.sheet_to_json(wb.Sheets["Kunde"], { header:1, defval:"" })
       .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
   );
-  if (!kunde.name) {
-    return {
+  if (!kunde.name)
+    return res.status(422).json({
       ok:false,
-      status:422,
-      error:{ ok:false, message:"Feld fehlt: Kunde.name", details:{sheet:"Kunde", field:"name"} }
-    };
-  }
+      message:"Feld fehlt: Kunde.name",
+      details:{sheet:"Kunde", field:"name"}
+    });
 
   // Positionen
   const pos = xlsx.utils.sheet_to_json(wb.Sheets["Positionen"], { defval:"" });
-  if (!pos.length) {
-    return {
+  if (!pos.length)
+    return res.status(422).json({
       ok:false,
-      status:422,
-      error:{ ok:false, message:"Keine Positionen vorhanden", details:{sheet:"Positionen"} }
-    };
-  }
+      message:"Keine Positionen vorhanden",
+      details:{sheet:"Positionen"}
+    });
 
   const byType = {};
   for (let i=0;i<pos.length;i++){
     const r = pos[i];
     const row = i+2;
 
-    if (!r.type || !r.name) {
-      return {
-        ok:false,
-        status:422,
-        error:validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
-      };
-    }
+    if (!r.type || !r.name)
+      return res.status(422).json(
+        validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
+      );
 
     // Menge: qty oder quantity
     const rawQty = r.qty ?? r.quantity;
     const qty = parseNumberValue(rawQty);
-    if (!Number.isFinite(qty) || qty<=0) {
-      return {
-        ok:false,
-        status:422,
-        error:validationError(
+    if (!Number.isFinite(qty) || qty<=0)
+      return res.status(422).json(
+        validationError(
           "Menge muss größer als 0 sein.",
           "Positionen",
           row,
           r.qty !== undefined ? "qty" : "quantity"
         )
-      };
-    }
+      );
 
     // Preis: price oder unitPriceAmount
     const rawPrice = r.price ?? r.unitPriceAmount;
     const price = parseNumberValue(rawPrice);
-    if (!Number.isFinite(price) || price<0) {
-      return {
-        ok:false,
-        status:422,
-        error:validationError(
+    if (!Number.isFinite(price) || price<0)
+      return res.status(422).json(
+        validationError(
           "Preis muss 0 oder größer sein.",
           "Positionen",
           row,
           r.price !== undefined ? "price" : "unitPriceAmount"
         )
-      };
-    }
+      );
 
-    if (String(r.type).toLowerCase()==="material" && !r.articleId) {
-      return {
-        ok:false,
-        status:422,
-        error:validationError(
+    if (String(r.type).toLowerCase()==="material" && !r.articleId)
+      return res.status(422).json(
+        validationError(
           "articleId ist für Material erforderlich.",
           "Positionen",
           row,
           "articleId"
         )
-      };
-    }
+      );
 
     byType[r.type] = (byType[r.type] || 0) + 1;
-
-    // normalisierte Werte auf r schreiben (für spätere Verwendung)
+    // normalisierte Werte merken
     r.qty = qty;
     r.price = price;
   }
 
-  return { ok:true, angebot, kunde, pos, byType };
-}
+  res.json({
+    ok:true,
+    summary:{
+      customer:kunde.name,
+      taxType:angebot.taxType,
+      positions:pos.length,
+      byType
+    }
+  });
+});
 
-// Helper: Angebots-Payload für Lexware bauen
-function buildQuotationPayload(angebot, kunde, pos) {
+// ------------------ LIVE: Angebot + PDF ------------------
+app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => {
+  if (!req.file)
+    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
+
+  // gleiche Logik wie im Testmodus nutzen
+  let wb;
+  try {
+    wb = xlsx.read(req.file.buffer, { type:"buffer" });
+  } catch {
+    return res.status(400).json({
+      ok:false,
+      message:"Excel-Datei kann nicht gelesen werden"
+    });
+  }
+
+  for (const s of ["Angebot","Kunde","Positionen"]) {
+    if (!wb.Sheets[s])
+      return res.status(422).json({
+        ok:false,
+        message:`Tabelle fehlt: ${s}`,
+        details:{ sheet:s }
+      });
+  }
+
+  const angebot = Object.fromEntries(
+    xlsx.utils.sheet_to_json(wb.Sheets["Angebot"], { header:1, defval:"" })
+      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
+  );
+  if (!angebot.taxType)
+    return res.status(422).json({
+      ok:false,
+      message:"Feld fehlt: Angebot.taxType",
+      details:{sheet:"Angebot", field:"taxType"}
+    });
+
+  const kunde = Object.fromEntries(
+    xlsx.utils.sheet_to_json(wb.Sheets["Kunde"], { header:1, defval:"" })
+      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
+  );
+  if (!kunde.name)
+    return res.status(422).json({
+      ok:false,
+      message:"Feld fehlt: Kunde.name",
+      details:{sheet:"Kunde", field:"name"}
+    });
+
+  const pos = xlsx.utils.sheet_to_json(wb.Sheets["Positionen"], { defval:"" });
+  if (!pos.length)
+    return res.status(422).json({
+      ok:false,
+      message:"Keine Positionen vorhanden",
+      details:{sheet:"Positionen"}
+    });
+
+  const byType = {};
+  for (let i=0;i<pos.length;i++){
+    const r = pos[i];
+    const row = i+2;
+
+    if (!r.type || !r.name)
+      return res.status(422).json(
+        validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
+      );
+
+    const rawQty = r.qty ?? r.quantity;
+    const qty = parseNumberValue(rawQty);
+    if (!Number.isFinite(qty) || qty<=0)
+      return res.status(422).json(
+        validationError(
+          "Menge muss größer als 0 sein.",
+          "Positionen",
+          row,
+          r.qty !== undefined ? "qty" : "quantity"
+        )
+      );
+
+    const rawPrice = r.price ?? r.unitPriceAmount;
+    const price = parseNumberValue(rawPrice);
+    if (!Number.isFinite(price) || price<0)
+      return res.status(422).json(
+        validationError(
+          "Preis muss 0 oder größer sein.",
+          "Positionen",
+          row,
+          r.price !== undefined ? "price" : "unitPriceAmount"
+        )
+      );
+
+    if (String(r.type).toLowerCase()==="material" && !r.articleId)
+      return res.status(422).json(
+        validationError(
+          "articleId ist für Material erforderlich.",
+          "Positionen",
+          row,
+          "articleId"
+        )
+      );
+
+    byType[r.type] = (byType[r.type] || 0) + 1;
+    r.qty = qty;
+    r.price = price;
+  }
+
+  if (!process.env.LEXWARE_API_KEY) {
+    return res.status(500).json({ ok:false, message:"LEXWARE_API_KEY ist nicht gesetzt" });
+  }
+
+  const baseUrl = "https://api.lexware.io";
+
+  // Angebots-Payload bauen
   const now = new Date();
-
   const voucherDate = angebot.voucherDate ? new Date(angebot.voucherDate) : now;
   const expirationDate = angebot.expirationDate
     ? new Date(angebot.expirationDate)
@@ -244,7 +345,7 @@ function buildQuotationPayload(angebot, kunde, pos) {
     return item;
   });
 
-  return {
+  const quotationPayload = {
     voucherDate: voucherDate.toISOString(),
     expirationDate: expirationDate.toISOString(),
     address,
@@ -259,48 +360,6 @@ function buildQuotationPayload(angebot, kunde, pos) {
     ...(angebot.introduction ? { introduction: angebot.introduction } : {}),
     ...(angebot.remark ? { remark: angebot.remark } : {})
   };
-}
-
-// Testmodus: Excel lesen und validieren
-app.post("/validate-excel", upload.single("file"), (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
-
-  const result = parseAndValidateExcel(req.file.buffer);
-  if (!result.ok) {
-    return res.status(result.status).json(result.error);
-  }
-
-  const { angebot, kunde, pos, byType } = result;
-
-  res.json({
-    ok:true,
-    summary:{
-      customer:kunde.name,
-      taxType:angebot.taxType,
-      positions:pos.length,
-      byType
-    }
-  });
-});
-
-// Live: Angebot erzeugen & PDF zurückgeben
-app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
-
-  const result = parseAndValidateExcel(req.file.buffer);
-  if (!result.ok) {
-    return res.status(result.status).json(result.error);
-  }
-
-  if (!process.env.LEXWARE_API_KEY) {
-    return res.status(500).json({ ok:false, message:"LEXWARE_API_KEY ist nicht gesetzt" });
-  }
-
-  const { angebot, kunde, pos, byType } = result;
-  const quotationPayload = buildQuotationPayload(angebot, kunde, pos);
-  const baseUrl = "https://api.lexware.io";
 
   try {
     // 1) Angebot erstellen
@@ -340,10 +399,16 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     if (!fileRes.ok) {
       let errorText = null;
       try { errorText = await fileRes.text(); } catch {}
-      return res.status(502).json({
+
+      const isRateLimit = fileRes.status === 429;
+
+      return res.status(fileRes.status).json({
         ok:false,
-        message:"Angebot erstellt, aber PDF konnte nicht geladen werden",
+        message: isRateLimit
+          ? "Angebot wurde erstellt, aber das Lexware-API-Limit ist erreicht (429). Das PDF kann aktuell nicht geladen werden. Bitte öffne das Angebot direkt in Lexware oder starte den PDF-Download später erneut."
+          : "Angebot erstellt, aber PDF konnte nicht geladen werden",
         status:fileRes.status,
+        quotationId,
         error:errorText
       });
     }
