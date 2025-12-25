@@ -157,7 +157,7 @@ app.get("/download-template-with-articles", async (_req, res) => {
     console.error("Fehler beim Laden der Artikel für das Template:", e);
   }
 
-  // Anleitung-Tab (ausführlich)
+  // Anleitung-Tab (ausführlich + Hinweis auf Auto-Namen)
   try {
     const helpSheetName = "Anleitung";
 
@@ -180,6 +180,7 @@ app.get("/download-template-with-articles", async (_req, res) => {
         "Positionen",
         "type = material",
         "Ware / Artikel aus Lexoffice. articleId ist Pflicht (aus Tab 'Artikel-Lookup'). "
+        + "Wenn name in der Excel leer ist, holt das Tool automatisch den Artikelnamen aus Lexoffice und trägt ihn ein. "
         + "Der Preis wird automatisch aus Lexoffice übernommen, der Excel-Preis wird ignoriert. "
         + "Pflicht: articleId und quantity / qty > 0."
       ],
@@ -211,7 +212,8 @@ app.get("/download-template-with-articles", async (_req, res) => {
         "Positionen",
         "name & description",
         "name = kurze Bezeichnung der Position. description = optionaler längerer Beschreibungstext. "
-        + "Bei material darf name leer sein (Name kommt dann aus Lexoffice). Bei custom/service/text sollte name ausgefüllt werden."
+        + "Bei material darf name leer sein – das Tool ergänzt den Namen dann automatisch aus Lexoffice. "
+        + "Bei custom/service/text sollte name ausgefüllt werden."
       ],
 
       [
@@ -298,7 +300,7 @@ app.get("/api-test", async (_req, res) => {
         httpStatus: r.status
       });
     }
-    const d = await r.json();
+    const d = await res.json();
     res.json({
       ok: true,
       status: "OK",
@@ -587,7 +589,7 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     address.countryCode = (kunde.countryCode || "DE").toString().trim();
   }
 
-  // --- NEU: Artikelpreise für alle Positionen mit articleId aus Lexoffice holen ---
+  // --- Artikelpreise UND Namen (falls leer) aus Lexoffice holen ---
   const articleMap = {};
   const ids = [...new Set(pos.filter(p => p.articleId).map(p => String(p.articleId).trim()))];
 
@@ -625,7 +627,10 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     });
   }
 
-  const lineItems = pos.map((r) => {
+  // Hier sammeln wir Positionen, bei denen wir den Namen automatisch gesetzt haben
+  const autoNamedLineItems = [];
+
+  const lineItems = pos.map((r, idx) => {
     const type = r.type;
     const qty = r.qty;
 
@@ -691,9 +696,27 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
       unitPrice
     };
 
-    // name nur setzen, wenn vorhanden (bei material darf leer sein)
-    if (r.name) {
-      item.name = r.name;
+    // Name-Regel:
+    // 1) Wenn in Excel gefüllt -> verwenden
+    // 2) Wenn leer & articleId vorhanden -> Artikelnamen aus Lexoffice nehmen (und für UI melden)
+    let nameToUse = (r.name || "").trim();
+
+    if (!nameToUse && r.articleId) {
+      const id = String(r.articleId).trim();
+      const article = articleMap[id];
+      if (article && article.title) {
+        nameToUse = article.title;
+        autoNamedLineItems.push({
+          positionIndex: idx + 1,   // 1-basiert im Angebot
+          excelRow: idx + 2,        // wegen Header
+          articleId: id,
+          name: nameToUse
+        });
+      }
+    }
+
+    if (nameToUse) {
+      item.name = nameToUse;
     }
 
     if (r.description) item.description = r.description;
@@ -751,14 +774,21 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     const quotation = await createRes.json();
     const quotationId = quotation.id;
 
+    // Nachricht ggf. mit Zusatz-Hinweis
+    let baseMessage = "Angebot in Lexoffice erstellt";
+    if (autoNamedLineItems.length > 0) {
+      baseMessage += " (Artikelnamen wurden automatisch aus Lexoffice ergänzt)";
+    }
+
     return res.json(
       successResponse("create-quote", {
-        message: "Angebot in Lexoffice erstellt",
+        message: baseMessage,
         quotationId,
         customer: kunde.name,
         taxType: angebot.taxType,
         positions: pos.length,
-        byType
+        byType,
+        autoNamedLineItems
       })
     );
   } catch (e) {
