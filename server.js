@@ -16,7 +16,9 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // Template Download
 app.get("/download-template-with-articles", (_req, res) => {
   const p = path.resolve("./templates/Lexware_Template.xlsx");
-  if (!fs.existsSync(p)) return res.status(500).json({ ok:false, message:"Template fehlt" });
+  if (!fs.existsSync(p))
+    return res.status(500).json({ ok:false, message:"Template-Datei fehlt auf dem Server" });
+
   res.download(p, "Lexware_Template.xlsx");
 });
 
@@ -29,84 +31,71 @@ app.get("/api-test", async (_req, res) => {
         Accept: "application/json"
       }
     });
-    if (!r.ok) return res.status(500).json({ ok:false, status:r.status });
+
+    if (!r.ok)
+      return res.status(500).json({
+        ok:false,
+        message:"API-Verbindung fehlgeschlagen",
+        status:r.status
+      });
+
     const d = await r.json();
-    res.json({ ok:true, org:d.organizationName || "OK" });
+    res.json({
+      ok:true,
+      organization: d.organizationName || "API-Verbindung erfolgreich"
+    });
   } catch (e) {
-    res.status(500).json({ ok:false, error:String(e) });
+    res.status(500).json({
+      ok:false,
+      message:"API-Test konnte nicht ausgeführt werden",
+      error:String(e)
+    });
   }
 });
 
-// Testmodus: Excel lesen & validieren
+
+// ---------------------------------------------------------
+// Helper für Klartext-Fehlermeldungen
+// ---------------------------------------------------------
+function validationError(message, sheet, row, field) {
+  return {
+    ok:false,
+    message:`${message} (Tabelle: ${sheet}, Zeile ${row})`,
+    details:{ sheet, row, field }
+  };
+}
+
+
+// ---------------------------------------------------------
+// TESTMODUS — Excel prüfen & verständliche Fehlermeldungen
+// ---------------------------------------------------------
 app.post("/validate-excel", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ ok:false, message:"Keine Datei" });
+
+  if (!req.file)
+    return res.status(400).json({
+      ok:false,
+      message:"Es wurde keine Datei hochgeladen"
+    });
 
   let wb;
   try {
     wb = xlsx.read(req.file.buffer, { type:"buffer" });
   } catch {
-    return res.status(400).json({ ok:false, message:"Excel nicht lesbar" });
+    return res.status(400).json({
+      ok:false,
+      message:"Die Excel-Datei konnte nicht gelesen werden"
+    });
   }
 
+  // Pflicht-Sheets
   for (const s of ["Angebot","Kunde","Positionen"]) {
-    if (!wb.Sheets[s]) return res.status(422).json({ ok:false, message:`Sheet fehlt: ${s}` });
+    if (!wb.Sheets[s])
+      return res.status(422).json({
+        ok:false,
+        message:`Die Tabelle "${s}" fehlt in der Excel-Datei`,
+        details:{ sheet:s }
+      });
   }
 
-  const angebot = Object.fromEntries(
-    xlsx.utils.sheet_to_json(wb.Sheets["Angebot"], { header:1, defval:"" })
-      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
-  );
-  if (!angebot.taxType)
-    return res.status(422).json({ ok:false, message:"Angebot.taxType fehlt", details:{sheet:"Angebot", field:"taxType"} });
-
-  const kunde = Object.fromEntries(
-    xlsx.utils.sheet_to_json(wb.Sheets["Kunde"], { header:1, defval:"" })
-      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
-  );
-  if (!kunde.name)
-    return res.status(422).json({ ok:false, message:"Kunde.name fehlt", details:{sheet:"Kunde", field:"name"} });
-
-  const pos = xlsx.utils.sheet_to_json(wb.Sheets["Positionen"], { defval:"" });
-  if (!pos.length)
-    return res.status(422).json({ ok:false, message:"Keine Positionen", details:{sheet:"Positionen"} });
-
-  const byType = {};
-  for (let i=0;i<pos.length;i++){
-    const r = pos[i];
-    const row = i+2;
-
-    if (!r.type || !r.name)
-      return res.status(422).json({ ok:false, message:"type/name fehlt", details:{sheet:"Positionen", row, field:"type/name"} });
-
-    const qty = Number(r.qty);
-    if (!Number.isFinite(qty) || qty<=0)
-      return res.status(422).json({ ok:false, message:"qty > 0", details:{sheet:"Positionen", row, field:"qty"} });
-
-    const price = Number(r.price);
-    if (!Number.isFinite(price) || price<0)
-      return res.status(422).json({ ok:false, message:"price >= 0", details:{sheet:"Positionen", row, field:"price"} });
-
-    if (String(r.type).toLowerCase()==="material" && !r.articleId)
-      return res.status(422).json({ ok:false, message:"articleId fehlt", details:{sheet:"Positionen", row, field:"articleId"} });
-
-    byType[r.type] = (byType[r.type] || 0) + 1;
-  }
-
-  res.json({
-    ok:true,
-    summary:{
-      customer:kunde.name,
-      taxType:angebot.taxType,
-      positions:pos.length,
-      byType
-    }
-  });
-});
-
-// Platzhalter für später
-app.post("/create-quote-from-excel", upload.single("file"), (_req, res) =>
-  res.status(501).json({ ok:false, message:"Angebot/PDF folgt" })
-);
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=>console.log("Server läuft"));
+  // Angebot
+  const angebot =
