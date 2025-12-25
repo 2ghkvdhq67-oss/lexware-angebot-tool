@@ -51,7 +51,6 @@ function successResponse(action, extra = {}) {
 // --------- Helper: alle Artikel holen (Paging) ---------
 async function fetchAllArticles() {
   if (!process.env.LEXWARE_API_KEY) {
-    // Ohne API-Key können wir keine Artikel holen
     return [];
   }
 
@@ -59,7 +58,6 @@ async function fetchAllArticles() {
   let page = 0;
   const pageSize = 100;
 
-  // Paging-Schleife mit Sicherheitslimit
   while (true) {
     const url = `${BASE_URL}/v1/articles?page=${page}&size=${pageSize}`;
     const res = await fetch(url, {
@@ -86,13 +84,13 @@ async function fetchAllArticles() {
     if (totalPages !== null && page >= totalPages - 1) break;
 
     page += 1;
-    if (page > 50) break; // hartes Sicherheitslimit (~5.000 Artikel)
+    if (page > 50) break; // Sicherheitslimit
   }
 
   return articles;
 }
 
-// --------- Template Download (mit Artikel-Lookup + ausführlicher Anleitung) ---------
+// --------- Template Download (mit Artikel-Lookup + Anleitung) ---------
 app.get("/download-template-with-articles", async (_req, res) => {
   const p = path.resolve("./templates/Lexware_Template.xlsx");
   if (!fs.existsSync(p)) {
@@ -119,7 +117,7 @@ app.get("/download-template-with-articles", async (_req, res) => {
     });
   }
 
-  // Versuchen, Artikel aus Lexoffice zu holen – bei Fehler Template trotzdem liefern
+  // Artikel-Lookup füllen
   try {
     const articles = await fetchAllArticles();
 
@@ -157,136 +155,94 @@ app.get("/download-template-with-articles", async (_req, res) => {
     }
   } catch (e) {
     console.error("Fehler beim Laden der Artikel für das Template:", e);
-    // Fallback: trotzdem Template ausliefern
   }
 
-  // NEU: ausführlicher Anleitung-Tab
+  // Anleitung-Tab (ausführlich)
   try {
     const helpSheetName = "Anleitung";
 
     const helpData = [
       ["Bereich", "Feld", "Erklärung"],
 
-      // ==== TYPE: ausführlich, je Typ eine Zeile ====
-
       [
         "Positionen",
         "type = custom",
-        "Individuelle Position mit eigenem Text, Preis und Menge. "
-        + "Kein Artikel aus Lexoffice. articleId bleibt leer. "
-        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. "
-        + "Beispiele: Sonderdruck, Einmalkosten, Layout-Pauschale."
+        "Individuelle Position mit eigenem Text, Preis und Menge. Kein Artikel aus Lexoffice. "
+        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. Beispiel: Sonderdruck, Einmalkosten."
       ],
-
       [
         "Positionen",
         "type = service",
-        "Dienstleistung oder Arbeitszeit mit Preis und Menge. "
-        + "Optional kann eine articleId hinterlegt werden (falls die Dienstleistung als Artikel in Lexoffice existiert). "
-        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. "
-        + "Beispiele: Gestaltung, Einrichtung, Montage, Arbeitsstunden."
+        "Dienstleistung oder Arbeitszeit mit Preis und Menge. Optional articleId, wenn die Leistung in Lexoffice als Artikel existiert. "
+        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. Beispiel: Gestaltung, Montage."
       ],
-
       [
         "Positionen",
         "type = material",
-        "Ware / Artikel aus Lexoffice. articleId ist Pflicht und muss zu einem Eintrag im Tab 'Artikel-Lookup' passen. "
-        + "Menge und Preis kommen aus der Excel (oder orientieren sich am Artikel). "
-        + "Pflicht: articleId ausgefüllt, quantity / qty > 0, unitPriceAmount / price >= 0. "
-        + "Beispiele: T-Shirts, Textilien, Zubehör, Standardartikel."
+        "Ware / Artikel aus Lexoffice. articleId ist Pflicht (aus Tab 'Artikel-Lookup'). "
+        + "name kann leer bleiben – dann kommt der Name aus Lexoffice. Pflicht: articleId, quantity / qty > 0, unitPriceAmount / price >= 0."
       ],
-
       [
         "Positionen",
         "type = text",
-        "Reine Infozeile ohne Preis und ohne Menge. "
-        + "Wird nur als Text im Angebot angezeigt (z.B. Hinweise, Lieferzeit, Trennzeilen). "
-        + "In der Regel keine quantity / qty und kein unitPriceAmount / price setzen."
+        "Reine Infozeile ohne Preis und ohne Menge. Wird nur als Text im Angebot angezeigt (z.B. Lieferzeit-Hinweise). "
+        + "In der Regel quantity / qty und unitPriceAmount / price leer lassen."
       ],
-
-      // ==== weitere Felder in Positionen ====
 
       [
         "Positionen",
         "articleId",
-        "Nur verwenden, wenn type = material (oder optional service). "
-        + "Die articleId ist die interne Lexoffice-Artikel-ID. "
-        + "Sie kann aus dem Tab 'Artikel-Lookup' kopiert werden. "
-        + "Wenn type = material und articleId fehlt, wird das Angebot nicht akzeptiert."
+        "Nur bei type = material (oder optional service) verwenden. ID aus 'Artikel-Lookup' kopieren. "
+        + "Wenn type = material und articleId fehlt, wird die Datei abgelehnt."
       ],
-
       [
         "Positionen",
         "quantity / qty",
-        "Menge der Position. Muss größer als 0 sein. "
-        + "Zulässig sind ganze Zahlen oder Dezimalzahlen (z.B. 1,5 für Arbeitsstunden). "
-        + "Bei type = text wird quantity normalerweise leer gelassen."
+        "Menge der Position. Muss größer als 0 sein. Ganze Zahlen oder Dezimalzahlen (z.B. 1,5 Stunden) sind erlaubt."
       ],
-
       [
         "Positionen",
         "unitPriceAmount / price",
-        "Einzelpreis pro Stück / Einheit. Muss 0 oder größer sein. "
-        + "Dezimaltrennzeichen: Komma oder Punkt sind erlaubt (z.B. 6,9 oder 6.9). "
-        + "Bei type = text bleibt dieses Feld normalerweise leer. "
-        + "Ob es sich um Netto- oder Bruttopreis handelt, wird über Angebot.taxType gesteuert."
+        "Einzelpreis pro Stück/Einheit. Muss 0 oder größer sein. Komma oder Punkt erlaubt (z.B. 6,9 oder 6.9). "
+        + "Ob Netto oder Brutto hängt von Angebot.taxType ab."
       ],
-
       [
         "Positionen",
-        "name und description",
-        "name = Kurzbezeichnung, die in der Angebotszeile angezeigt wird. "
-        + "description = optionaler längerer Text (z.B. Details, Zusatzinfos). "
-        + "Beides ist besonders wichtig bei custom, service und text, damit das Angebot verständlich ist."
+        "name & description",
+        "name = kurze Bezeichnung der Position. description = optionaler längerer Beschreibungstext. "
+        + "Bei material darf name leer sein (dann kommt der Name aus Lexoffice). Bei custom/service/text sollte name ausgefüllt werden."
       ],
-
-      // ==== Angebot & Kunde ====
 
       [
         "Angebot",
         "taxType",
-        "Pflichtfeld. Steuert, ob Preise als Netto oder Brutto interpretiert werden. "
-        + "Übliche Werte: 'net' für Nettopreise (zzgl. MwSt.) oder 'gross' für Bruttopreise (inkl. MwSt.). "
-        + "Muss zur Preislogik in den Positionen passen."
+        "Pflichtfeld. Steuert, ob Preise als Netto oder Brutto interpretiert werden. Üblich: 'net' (Netto) oder 'gross' (Brutto)."
       ],
-
       [
         "Angebot",
         "currency",
-        "Währung des Angebots, Standard ist EUR. Nur ändern, wenn in Lexoffice passende Währungskonten eingerichtet sind."
+        "Währung des Angebots. Standard: EUR."
       ],
-
       [
         "Kunde",
         "name",
-        "Pflichtfeld. Name des Kunden (Firma oder Privatperson), an den das Angebot gesendet wird. "
-        + "Kann entweder zu einem bestehenden Kontakt in Lexoffice passen oder für einen neuen Kontakt verwendet werden."
+        "Pflichtfeld. Name des Kunden (Firma oder Person), an den das Angebot geht."
       ],
-
       [
         "Kunde",
         "contactId",
-        "Optional. Wenn vorhanden, verweist dieser Wert direkt auf einen bestehenden Kontakt in Lexoffice. "
-        + "Dann werden Adresse und Firmendaten aus Lexoffice übernommen. "
-        + "Wenn contactId leer ist, wird anhand von name und weiteren Feldern (Straße, PLZ, Ort) gearbeitet."
+        "Optional. Wenn ausgefüllt, wird direkt dieser Kontakt aus Lexoffice verwendet."
       ],
-
-      // ==== Allgemeine Hinweise ====
-
       [
         "Allgemein",
         "Struktur",
-        "Bitte die Sheet-Namen ('Angebot', 'Kunde', 'Positionen', 'Artikel-Lookup', 'Anleitung') "
-        + "sowie die Spaltenüberschriften nicht ändern. "
-        + "Neue Zeilen für weitere Positionen sind erlaubt."
+        "Bitte Sheet-Namen und Spaltenüberschriften nicht ändern. Neue Zeilen für weitere Positionen sind erlaubt."
       ],
-
       [
         "Allgemein",
-        "Prüfung",
-        "Empfehlung: Zuerst immer 'Nur prüfen' im Tool verwenden. "
-        + "Wenn keine Fehlermeldung kommt, anschließend 'Angebot erstellen'. "
-        + "Fehlermeldungen nennen immer Tabelle, Zeile und Feld, die korrigiert werden müssen."
+        "Tipp",
+        "Im Tool zuerst 'Nur prüfen' verwenden. Wenn keine Fehlermeldung kommt, anschließend 'Angebot erstellen'. "
+        + "Fehlermeldungen nennen immer Tabelle, Zeile und Feld."
       ]
     ];
 
@@ -297,7 +253,6 @@ app.get("/download-template-with-articles", async (_req, res) => {
     }
   } catch (e) {
     console.error("Fehler beim Erzeugen der Anleitung-Tabelle:", e);
-    // Template trotzdem ausliefern
   }
 
   // Workbook zurück an den Browser
@@ -462,13 +417,31 @@ function parseAndValidateExcel(buffer) {
     const r = pos[i];
     const row = i + 2;
 
-    if (!r.type || !r.name) {
+    const typeRaw = (r.type || "").toString().trim();
+    const nameRaw = (r.name || "").toString().trim();
+
+    // type immer Pflicht
+    if (!typeRaw) {
       return {
         ok: false,
         statusCode: 422,
-        body: validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
+        body: validationError("Typ (type) fehlt.", "Positionen", row, "type")
       };
     }
+
+    const typeLower = typeRaw.toLowerCase();
+
+    // name-Pflicht nur für nicht-material
+    if (typeLower !== "material" && typeLower !== "text" && !nameRaw) {
+      return {
+        ok: false,
+        statusCode: 422,
+        body: validationError("Positionsname (name) fehlt.", "Positionen", row, "name")
+      };
+    }
+
+    // text-Zeilen dürfen keinen Preis und keine Menge haben (optional, wir erlauben Menge/Preis aber aktuell)
+    // hier NICHT hart prüfen, damit es flexibel bleibt
 
     // Menge: qty oder quantity
     const rawQty = r.qty ?? r.quantity;
@@ -502,12 +475,13 @@ function parseAndValidateExcel(buffer) {
       };
     }
 
-    if (String(r.type).toLowerCase() === "material" && !r.articleId) {
+    // articleId-Pflicht nur für material
+    if (typeLower === "material" && !r.articleId) {
       return {
         ok: false,
         statusCode: 422,
         body: validationError(
-          "articleId ist für Material erforderlich.",
+          "articleId ist für type = material erforderlich.",
           "Positionen",
           row,
           "articleId"
@@ -515,9 +489,11 @@ function parseAndValidateExcel(buffer) {
       };
     }
 
-    byType[r.type] = (byType[r.type] || 0) + 1;
+    byType[typeRaw] = (byType[typeRaw] || 0) + 1;
     r.qty = qty;
     r.price = price;
+    r.type = typeLower;   // normalisiert
+    r.name = nameRaw;     // getrimmt (kann leer sein)
   }
 
   return {
@@ -608,7 +584,7 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
   }
 
   const lineItems = pos.map((r) => {
-    const type = String(r.type).toLowerCase();
+    const type = r.type; // schon lower-case
     const qty = r.qty;
     const price = r.price;
     const rawTaxRate = r.taxRate ?? r.taxRatePercentage ?? defaultTaxRate;
@@ -627,11 +603,15 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
 
     const item = {
       type,
-      name: r.name,
       quantity: qty,
       unitName: r.unitName || "Stk",
       unitPrice
     };
+
+    // name nur setzen, wenn vorhanden (bei material darf leer sein)
+    if (r.name) {
+      item.name = r.name;
+    }
 
     if (r.description) item.description = r.description;
     if ((type === "material" || type === "service") && r.articleId) {
