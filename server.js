@@ -180,12 +180,13 @@ app.get("/download-template-with-articles", async (_req, res) => {
         "Positionen",
         "type = material",
         "Ware / Artikel aus Lexoffice. articleId ist Pflicht (aus Tab 'Artikel-Lookup'). "
-        + "name kann leer bleiben – dann kommt der Name aus Lexoffice. Pflicht: articleId, quantity / qty > 0, unitPriceAmount / price >= 0."
+        + "Der Preis wird automatisch aus Lexoffice übernommen, der Excel-Preis wird ignoriert. "
+        + "Pflicht: articleId und quantity / qty > 0."
       ],
       [
         "Positionen",
         "type = text",
-        "Reine Infozeile ohne Preis und ohne Menge. Wird nur als Text im Angebot angezeigt (z.B. Lieferzeit-Hinweise). "
+        "Reine Infozeile ohne Preis und ohne Menge. Nur Text im Angebot (z.B. Lieferzeit-Hinweise). "
         + "In der Regel quantity / qty und unitPriceAmount / price leer lassen."
       ],
 
@@ -203,14 +204,14 @@ app.get("/download-template-with-articles", async (_req, res) => {
       [
         "Positionen",
         "unitPriceAmount / price",
-        "Einzelpreis pro Stück/Einheit. Muss 0 oder größer sein. Komma oder Punkt erlaubt (z.B. 6,9 oder 6.9). "
-        + "Ob Netto oder Brutto hängt von Angebot.taxType ab."
+        "Einzelpreis pro Stück/Einheit. Muss 0 oder größer sein, solange keine articleId gesetzt ist. "
+        + "Wenn articleId gefüllt ist, wird der Preis aus Lexoffice geholt und dieser Excel-Wert ignoriert."
       ],
       [
         "Positionen",
         "name & description",
         "name = kurze Bezeichnung der Position. description = optionaler längerer Beschreibungstext. "
-        + "Bei material darf name leer sein (dann kommt der Name aus Lexoffice). Bei custom/service/text sollte name ausgefüllt werden."
+        + "Bei material darf name leer sein (Name kommt dann aus Lexoffice). Bei custom/service/text sollte name ausgefüllt werden."
       ],
 
       [
@@ -431,7 +432,7 @@ function parseAndValidateExcel(buffer) {
 
     const typeLower = typeRaw.toLowerCase();
 
-    // name-Pflicht nur für nicht-material
+    // name-Pflicht nur für nicht-material und nicht-text
     if (typeLower !== "material" && typeLower !== "text" && !nameRaw) {
       return {
         ok: false,
@@ -439,9 +440,6 @@ function parseAndValidateExcel(buffer) {
         body: validationError("Positionsname (name) fehlt.", "Positionen", row, "name")
       };
     }
-
-    // text-Zeilen dürfen keinen Preis und keine Menge haben (optional, wir erlauben Menge/Preis aber aktuell)
-    // hier NICHT hart prüfen, damit es flexibel bleibt
 
     // Menge: qty oder quantity
     const rawQty = r.qty ?? r.quantity;
@@ -459,20 +457,27 @@ function parseAndValidateExcel(buffer) {
       };
     }
 
-    // Preis: price oder unitPriceAmount
-    const rawPrice = r.price ?? r.unitPriceAmount;
-    const price = parseNumberValue(rawPrice);
-    if (!Number.isFinite(price) || price < 0) {
-      return {
-        ok: false,
-        statusCode: 422,
-        body: validationError(
-          "Preis muss 0 oder größer sein.",
-          "Positionen",
-          row,
-          r.price !== undefined ? "price" : "unitPriceAmount"
-        )
-      };
+    // Preis: nur prüfen, wenn KEINE articleId gesetzt ist
+    const hasArticle = !!r.articleId;
+    if (!hasArticle) {
+      const rawPrice = r.price ?? r.unitPriceAmount;
+      const price = parseNumberValue(rawPrice);
+      if (!Number.isFinite(price) || price < 0) {
+        return {
+          ok: false,
+          statusCode: 422,
+          body: validationError(
+            "Preis muss 0 oder größer sein (oder articleId verwenden).",
+            "Positionen",
+            row,
+            r.price !== undefined ? "price" : "unitPriceAmount"
+          )
+        };
+      }
+      r.price = price;
+    } else {
+      // Preis aus Excel wird ignoriert, wir befüllen später aus Lexoffice
+      r.price = null;
     }
 
     // articleId-Pflicht nur für material
@@ -491,7 +496,6 @@ function parseAndValidateExcel(buffer) {
 
     byType[typeRaw] = (byType[typeRaw] || 0) + 1;
     r.qty = qty;
-    r.price = price;
     r.type = typeLower;   // normalisiert
     r.name = nameRaw;     // getrimmt (kann leer sein)
   }
@@ -583,22 +587,101 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     address.countryCode = (kunde.countryCode || "DE").toString().trim();
   }
 
+  // --- NEU: Artikelpreise für alle Positionen mit articleId aus Lexoffice holen ---
+  const articleMap = {};
+  const ids = [...new Set(pos.filter(p => p.articleId).map(p => String(p.articleId).trim()))];
+
+  try {
+    for (const id of ids) {
+      const resA = await fetch(`${BASE_URL}/v1/articles/${encodeURIComponent(id)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
+          Accept: "application/json"
+        }
+      });
+
+      if (!resA.ok) {
+        return res.status(502).json({
+          ok: false,
+          status: "ERROR",
+          stage: "lexoffice-article",
+          message: `Artikel konnte nicht geladen werden (articleId=${id})`,
+          httpStatus: resA.status
+        });
+      }
+
+      const article = await resA.json();
+      articleMap[id] = article;
+    }
+  } catch (e) {
+    console.error("Fehler beim Laden der Artikel aus Lexoffice:", e);
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "lexoffice-article",
+      message: "Fehler beim Laden der Artikel aus Lexoffice",
+      technical: String(e)
+    });
+  }
+
   const lineItems = pos.map((r) => {
-    const type = r.type; // schon lower-case
+    const type = r.type;
     const qty = r.qty;
-    const price = r.price;
-    const rawTaxRate = r.taxRate ?? r.taxRatePercentage ?? defaultTaxRate;
-    const taxRate = parseNumberValue(rawTaxRate);
+
+    let priceToUse = null;
+    let taxRate = defaultTaxRate;
+
+    if (r.articleId) {
+      const id = String(r.articleId).trim();
+      const article = articleMap[id];
+      if (article && article.price) {
+        const p = article.price;
+        if (typeof p.taxRate === "number") {
+          taxRate = p.taxRate;
+        }
+
+        if (taxType === "gross") {
+          if (typeof p.grossPrice === "number") {
+            priceToUse = p.grossPrice;
+          } else if (typeof p.netPrice === "number") {
+            priceToUse = p.netPrice;
+          }
+        } else {
+          if (typeof p.netPrice === "number") {
+            priceToUse = p.netPrice;
+          } else if (typeof p.grossPrice === "number") {
+            priceToUse = p.grossPrice;
+          }
+        }
+      }
+    }
+
+    // Fallback: wenn kein Artikelpreis verfügbar, Excel-Wert nutzen (falls vorhanden)
+    if (priceToUse == null) {
+      const rawPrice = r.price ?? r.unitPriceAmount;
+      const fallbackPrice = parseNumberValue(rawPrice);
+      if (Number.isFinite(fallbackPrice) && fallbackPrice >= 0) {
+        priceToUse = fallbackPrice;
+      } else {
+        priceToUse = 0;
+      }
+
+      const rawTaxRate = r.taxRate ?? r.taxRatePercentage ?? defaultTaxRate;
+      const parsedTax = parseNumberValue(rawTaxRate);
+      if (Number.isFinite(parsedTax)) {
+        taxRate = parsedTax;
+      }
+    }
 
     const unitPrice = {
       currency,
-      taxRatePercentage: Number.isFinite(taxRate) ? taxRate : defaultTaxRate
+      taxRatePercentage: taxRate
     };
-
     if (taxType === "gross") {
-      unitPrice.grossAmount = price;
+      unitPrice.grossAmount = priceToUse;
     } else {
-      unitPrice.netAmount = price;
+      unitPrice.netAmount = priceToUse;
     }
 
     const item = {
