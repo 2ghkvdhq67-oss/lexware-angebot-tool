@@ -92,7 +92,7 @@ async function fetchAllArticles() {
   return articles;
 }
 
-// --------- Template Download (mit Artikel-Lookup + Anleitung) ---------
+// --------- Template Download (mit Artikel-Lookup + ausführlicher Anleitung) ---------
 app.get("/download-template-with-articles", async (_req, res) => {
   const p = path.resolve("./templates/Lexware_Template.xlsx");
   if (!fs.existsSync(p)) {
@@ -160,45 +160,133 @@ app.get("/download-template-with-articles", async (_req, res) => {
     // Fallback: trotzdem Template ausliefern
   }
 
-  // NEU: Anleitung-Tab mit kurzen Erklärungen
+  // NEU: ausführlicher Anleitung-Tab
   try {
     const helpSheetName = "Anleitung";
+
     const helpData = [
-      ["Bereich", "Feld", "Hinweis"],
+      ["Bereich", "Feld", "Erklärung"],
+
+      // ==== TYPE: ausführlich, je Typ eine Zeile ====
+
       [
         "Positionen",
-        "type",
-        "Mögliche Werte: custom, service, material, text. 'material' = Artikel aus Lexoffice, 'text' = reine Infozeile ohne Preis."
+        "type = custom",
+        "Individuelle Position mit eigenem Text, Preis und Menge. "
+        + "Kein Artikel aus Lexoffice. articleId bleibt leer. "
+        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. "
+        + "Beispiele: Sonderdruck, Einmalkosten, Layout-Pauschale."
       ],
+
+      [
+        "Positionen",
+        "type = service",
+        "Dienstleistung oder Arbeitszeit mit Preis und Menge. "
+        + "Optional kann eine articleId hinterlegt werden (falls die Dienstleistung als Artikel in Lexoffice existiert). "
+        + "Pflicht: quantity / qty > 0 und unitPriceAmount / price >= 0. "
+        + "Beispiele: Gestaltung, Einrichtung, Montage, Arbeitsstunden."
+      ],
+
+      [
+        "Positionen",
+        "type = material",
+        "Ware / Artikel aus Lexoffice. articleId ist Pflicht und muss zu einem Eintrag im Tab 'Artikel-Lookup' passen. "
+        + "Menge und Preis kommen aus der Excel (oder orientieren sich am Artikel). "
+        + "Pflicht: articleId ausgefüllt, quantity / qty > 0, unitPriceAmount / price >= 0. "
+        + "Beispiele: T-Shirts, Textilien, Zubehör, Standardartikel."
+      ],
+
+      [
+        "Positionen",
+        "type = text",
+        "Reine Infozeile ohne Preis und ohne Menge. "
+        + "Wird nur als Text im Angebot angezeigt (z.B. Hinweise, Lieferzeit, Trennzeilen). "
+        + "In der Regel keine quantity / qty und kein unitPriceAmount / price setzen."
+      ],
+
+      // ==== weitere Felder in Positionen ====
+
       [
         "Positionen",
         "articleId",
-        "Pflicht, wenn type = material. Lexoffice-Artikel-ID aus Tab 'Artikel-Lookup' übernehmen."
+        "Nur verwenden, wenn type = material (oder optional service). "
+        + "Die articleId ist die interne Lexoffice-Artikel-ID. "
+        + "Sie kann aus dem Tab 'Artikel-Lookup' kopiert werden. "
+        + "Wenn type = material und articleId fehlt, wird das Angebot nicht akzeptiert."
       ],
+
       [
         "Positionen",
         "quantity / qty",
-        "Menge der Position. Muss größer als 0 sein."
+        "Menge der Position. Muss größer als 0 sein. "
+        + "Zulässig sind ganze Zahlen oder Dezimalzahlen (z.B. 1,5 für Arbeitsstunden). "
+        + "Bei type = text wird quantity normalerweise leer gelassen."
       ],
+
       [
         "Positionen",
         "unitPriceAmount / price",
-        "Einzelpreis je Einheit. Darf nicht kleiner als 0 sein. Komma oder Punkt möglich (z.B. 6,9)."
+        "Einzelpreis pro Stück / Einheit. Muss 0 oder größer sein. "
+        + "Dezimaltrennzeichen: Komma oder Punkt sind erlaubt (z.B. 6,9 oder 6.9). "
+        + "Bei type = text bleibt dieses Feld normalerweise leer. "
+        + "Ob es sich um Netto- oder Bruttopreis handelt, wird über Angebot.taxType gesteuert."
       ],
+
+      [
+        "Positionen",
+        "name und description",
+        "name = Kurzbezeichnung, die in der Angebotszeile angezeigt wird. "
+        + "description = optionaler längerer Text (z.B. Details, Zusatzinfos). "
+        + "Beides ist besonders wichtig bei custom, service und text, damit das Angebot verständlich ist."
+      ],
+
+      // ==== Angebot & Kunde ====
+
       [
         "Angebot",
         "taxType",
-        "Pflichtfeld. Übliche Werte: 'net' oder 'gross' (Netto-/Brutto-Angebot)."
+        "Pflichtfeld. Steuert, ob Preise als Netto oder Brutto interpretiert werden. "
+        + "Übliche Werte: 'net' für Nettopreise (zzgl. MwSt.) oder 'gross' für Bruttopreise (inkl. MwSt.). "
+        + "Muss zur Preislogik in den Positionen passen."
       ],
+
+      [
+        "Angebot",
+        "currency",
+        "Währung des Angebots, Standard ist EUR. Nur ändern, wenn in Lexoffice passende Währungskonten eingerichtet sind."
+      ],
+
       [
         "Kunde",
         "name",
-        "Pflichtfeld. Name der Firma oder der Person, an die das Angebot geht."
+        "Pflichtfeld. Name des Kunden (Firma oder Privatperson), an den das Angebot gesendet wird. "
+        + "Kann entweder zu einem bestehenden Kontakt in Lexoffice passen oder für einen neuen Kontakt verwendet werden."
       ],
+
+      [
+        "Kunde",
+        "contactId",
+        "Optional. Wenn vorhanden, verweist dieser Wert direkt auf einen bestehenden Kontakt in Lexoffice. "
+        + "Dann werden Adresse und Firmendaten aus Lexoffice übernommen. "
+        + "Wenn contactId leer ist, wird anhand von name und weiteren Feldern (Straße, PLZ, Ort) gearbeitet."
+      ],
+
+      // ==== Allgemeine Hinweise ====
+
       [
         "Allgemein",
-        "",
-        "Bitte die Struktur des Templates nicht verändern (Sheetnamen, Spaltenüberschriften)."
+        "Struktur",
+        "Bitte die Sheet-Namen ('Angebot', 'Kunde', 'Positionen', 'Artikel-Lookup', 'Anleitung') "
+        + "sowie die Spaltenüberschriften nicht ändern. "
+        + "Neue Zeilen für weitere Positionen sind erlaubt."
+      ],
+
+      [
+        "Allgemein",
+        "Prüfung",
+        "Empfehlung: Zuerst immer 'Nur prüfen' im Tool verwenden. "
+        + "Wenn keine Fehlermeldung kommt, anschließend 'Angebot erstellen'. "
+        + "Fehlermeldungen nennen immer Tabelle, Zeile und Feld, die korrigiert werden müssen."
       ]
     ];
 
