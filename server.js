@@ -207,7 +207,7 @@ app.post("/validate-excel", upload.single("file"), (req, res) => {
   });
 });
 
-// --------- LIVE: Angebot erzeugen, JSON zurückgeben (kein PDF) ---------
+// --------- LIVE: Angebot erzeugen, JSON zurückgeben ---------
 app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => {
   if (!req.file)
     return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
@@ -322,7 +322,7 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     const quotation = await createRes.json();
     const quotationId = quotation.id;
 
-    // HIER: bewusst KEIN PDF-Download mehr, nur JSON zurück
+    // Nur JSON zurückgeben – kein PDF hier
     return res.json({
       ok:true,
       message:"Angebot in Lexware erstellt",
@@ -340,6 +340,71 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
     return res.status(500).json({
       ok:false,
       message:"Unerwarteter Fehler bei der Lexware-API",
+      error:String(e)
+    });
+  }
+});
+
+// --------- PDF-Download: vorhandenes Angebot als PDF holen ---------
+app.get("/download-quote-pdf", async (req, res) => {
+  const quotationId = req.query.id;
+  if (!quotationId) {
+    return res.status(400).json({ ok:false, message:"quotationId fehlt" });
+  }
+
+  if (!process.env.LEXWARE_API_KEY) {
+    return res.status(500).json({ ok:false, message:"LEXWARE_API_KEY ist nicht gesetzt" });
+  }
+
+  const baseUrl = "https://api.lexware.io";
+
+  try {
+    const fileRes = await fetch(
+      `${baseUrl}/v1/quotations/${encodeURIComponent(quotationId)}/file`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
+          Accept: "application/pdf"
+        }
+      }
+    );
+
+    if (!fileRes.ok) {
+      let errorText = null;
+      try { errorText = await fileRes.text(); } catch {}
+      const isRateLimit = fileRes.status === 429;
+
+      return res.status(fileRes.status).json({
+        ok:false,
+        message: isRateLimit
+          ? "PDF kann aktuell nicht geladen werden (Lexware-Rate-Limit 429). Bitte später erneut versuchen oder das Angebot direkt in Lexoffice öffnen."
+          : "PDF konnte nicht geladen werden.",
+        status:fileRes.status,
+        error:errorText
+      });
+    }
+
+    const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const contentType = fileRes.headers.get("content-type") || "application/pdf";
+    const contentDispositionHeader = fileRes.headers.get("content-disposition");
+    const fallbackFilename = `Angebot-${quotationId}.pdf`;
+
+    res.setHeader("Content-Type", contentType);
+    if (contentDispositionHeader && contentDispositionHeader.includes("filename=")) {
+      res.setHeader("Content-Disposition", contentDispositionHeader);
+    } else {
+      res.setHeader("Content-Disposition", `attachment; filename="${fallbackFilename}"`);
+    }
+
+    return res.send(buffer);
+  } catch (e) {
+    console.error("Fehler beim PDF-Download:", e);
+    return res.status(500).json({
+      ok:false,
+      message:"Unerwarteter Fehler beim PDF-Download",
       error:String(e)
     });
   }
