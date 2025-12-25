@@ -1,59 +1,455 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>lexoffice Tool</title>
-<style>
-body{font-family:system-ui;margin:24px;max-width:800px}
-.box{border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:16px}
-button{padding:10px 14px;border-radius:8px;border:1px solid #999}
-.primary{background:#000;color:#fff}
-pre{background:#f6f6f6;padding:12px;border-radius:8px;white-space:pre-wrap}
-</style>
+  <meta charset="UTF-8" />
+  <title>Maiershirts Angebots-Tool – Lexoffice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ms-primary: #111827;     /* sehr dunkles Grau/Anthrazit */
+      --ms-accent:  #f59e0b;     /* dezentes „Gold“ */
+      --ms-bg:      #f3f4f6;     /* helles Grau */
+      --ms-border:  #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at top left, #e5e7eb, #f9fafb 40%, #f3f4f6);
+      color: #111827;
+    }
+
+    .app {
+      max-width: 980px;
+      margin: 40px auto;
+      padding: 24px 24px 32px;
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+
+    .logo-wrap {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 20%, #fbbf24, #111827 60%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .logo-wrap img {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    .logo-fallback {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f9fafb;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--ms-primary);
+    }
+
+    .title-block .subtitle {
+      margin-top: 4px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .chip-row {
+      margin-top: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--ms-border);
+      background: #f9fafb;
+      color: #4b5563;
+    }
+
+    .chip.primary {
+      border-color: var(--ms-accent);
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    .section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--ms-border);
+    }
+
+    label {
+      display: inline-block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input[type="file"] {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 9px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--ms-primary);
+      color: #f9fafb;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+      transition: transform 0.06s ease, box-shadow 0.06s ease, opacity 0.1s ease;
+    }
+
+    button span.icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    button.secondary {
+      background: #e5e7eb;
+      color: #111827;
+      box-shadow: none;
+    }
+
+    button.secondary .icon {
+      font-size: 14px;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.15);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .status {
+      margin-top: 6px;
+      font-size: 13px;
+    }
+
+    .status.ok {
+      color: #15803d;
+    }
+
+    .status.error {
+      color: #b91c1c;
+    }
+
+    .panel {
+      margin-top: 18px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--ms-border);
+      background: #f9fafb;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #4b5563;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .badge.ok {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge.error {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    pre {
+      background: #020617;
+      color: #e5e7eb;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin: 0;
+      border: 1px solid rgba(15, 23, 42, 0.6);
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      font-size: 11px;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .footer-note strong {
+      font-weight: 600;
+    }
+
+    @media (max-width: 640px) {
+      .app {
+        margin: 16px;
+        padding: 16px;
+      }
+      .header {
+        flex-direction: row;
+        align-items: center;
+      }
+      .panel {
+        padding: 10px;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div class="app">
+    <header class="header">
+      <div class="logo-wrap">
+        <!-- Optional: eigenes Logo in /public/maiershirts-logo.svg -->
+        <img src="/maiershirts-logo.svg" alt="Maiershirts Logo" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+        <span class="logo-fallback" style="display:none;">MS</span>
+      </div>
+      <div class="title-block">
+        <h1>Maiershirts Angebots-Tool</h1>
+        <div class="subtitle">
+          Angebote aus Lexoffice-Excel direkt erzeugen – ohne Tipparbeit.
+        </div>
+        <div class="chip-row">
+          <span class="chip primary">Lexoffice</span>
+          <span class="chip">Excel → Angebot</span>
+          <span class="chip">Maiershirts internal</span>
+        </div>
+      </div>
+    </header>
 
-<h2>lexoffice Angebots-Tool</h2>
+    <section class="section">
+      <label for="excelFile">Excel-Datei (.xlsx)</label>
+      <input type="file" id="excelFile" accept=".xlsx,.xls" />
+      <div class="hint">
+        Nutze das Lexoffice-Export/Template (Sheets: <strong>Angebot</strong>, <strong>Kunde</strong>, <strong>Positionen</strong>).
+      </div>
 
-<div class="box">
-  <button onclick="location.href='/download-template-with-articles'">Vorlage herunterladen</button>
-  <button onclick="apiTest()">API testen</button>
-</div>
+      <div class="button-row">
+        <button id="btnValidate">
+          <span class="icon">✅</span>
+          <span>Nur prüfen</span>
+        </button>
+        <button id="btnCreate">
+          <span class="icon">⚡</span>
+          <span>Angebot in Lexoffice erstellen</span>
+        </button>
+        <button id="btnDownloadPdf" class="secondary" disabled>
+          <span class="icon">📄</span>
+          <span>PDF herunterladen</span>
+        </button>
+      </div>
 
-<div class="box">
-  <input id="file" type="file" accept=".xlsx"><br><br>
-  <label><input id="testmode" type="checkbox" checked> Testmodus</label><br><br>
-  <button class="primary" onclick="run()">Ausführen</button>
-  <pre id="out">bereit</pre>
-</div>
+      <div id="status" class="status"></div>
 
-<script>
-const out = document.getElementById("out");
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">API-Antwort</div>
+          <span id="summaryBadge" class="badge" style="display:none;"></span>
+        </div>
+        <pre id="output">{ }</pre>
+      </div>
 
-async function apiTest(){
-  out.textContent="API-Test läuft…";
-  const r = await fetch("/api-test");
-  const d = await r.json();
-  out.textContent = JSON.stringify(d, null, 2);
-}
+      <div class="footer-note">
+        <span><strong>Hinweis:</strong> Zuerst „Nur prüfen“, dann „Angebot erstellen“ – danach kannst du das PDF laden.</span>
+        <span>Powered by Maiershirts · INXOR</span>
+      </div>
+    </section>
+  </div>
 
-async function run(){
-  const f = document.getElementById("file").files[0];
-  if(!f){ alert("Excel wählen"); return; }
+  <script>
+    const fileInput = document.getElementById("excelFile");
+    const btnValidate = document.getElementById("btnValidate");
+    const btnCreate = document.getElementById("btnCreate");
+    const btnDownloadPdf = document.getElementById("btnDownloadPdf");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const summaryBadge = document.getElementById("summaryBadge");
 
-  const test = document.getElementById("testmode").checked;
-  const url = test ? "/validate-excel" : "/create-quote-from-excel";
+    let lastQuotationId = null;
 
-  const fd = new FormData();
-  fd.append("file", f);
+    function setLoading(isLoading, label) {
+      const text = label || "Verarbeite...";
+      btnValidate.disabled = isLoading;
+      btnCreate.disabled = isLoading;
+      btnDownloadPdf.disabled = isLoading || !lastQuotationId;
+      statusEl.textContent = isLoading ? text : "";
+    }
 
-  out.textContent="Verarbeitung…";
-  const r = await fetch(url, { method:"POST", body:fd });
-  const d = await r.json();
-  out.textContent = JSON.stringify(d, null, 2);
-}
-</script>
+    function ensureFile() {
+      const file = fileInput.files[0];
+      if (!file) {
+        statusEl.textContent = "Bitte eine Excel-Datei auswählen.";
+        statusEl.className = "status error";
+        return null;
+      }
+      return file;
+    }
 
+    async function callBackend(url) {
+      const file = ensureFile();
+      if (!file) return;
+
+      setLoading(true);
+      summaryBadge.style.display = "none";
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          body: formData
+        });
+
+        const contentType = res.headers.get("content-type") || "";
+        let data = null;
+
+        if (contentType.includes("application/json")) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          data = { ok: false, message: "Keine JSON-Antwort", raw: text };
+        }
+
+        outputEl.textContent = JSON.stringify(data, null, 2);
+
+        if (!res.ok || !data.ok) {
+          statusEl.textContent = data.message || "Fehler bei der Verarbeitung.";
+          statusEl.className = "status error";
+          lastQuotationId = null;
+          btnDownloadPdf.disabled = true;
+          return data;
+        }
+
+        // ok:true
+        statusEl.textContent = data.message || "OK";
+        statusEl.className = "status ok";
+
+        if (data.quotationId) {
+          lastQuotationId = data.quotationId;
+          btnDownloadPdf.disabled = false;
+          summaryBadge.style.display = "inline-block";
+          summaryBadge.textContent = "Angebot erstellt: " + data.quotationId;
+        } else {
+          lastQuotationId = null;
+          btnDownloadPdf.disabled = true;
+        }
+
+        return data;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Technischer Fehler: " + err;
+        statusEl.className = "status error";
+        outputEl.textContent = JSON.stringify({ ok: false, error: String(err) }, null, 2);
+        lastQuotationId = null;
+        btnDownloadPdf.disabled = true;
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    btnValidate.addEventListener("click", () => {
+      lastQuotationId = null;
+      btnDownloadPdf.disabled = true;
+      callBackend("/validate-excel");
+    });
+
+    btnCreate.addEventListener("click", () => {
+      callBackend("/create-quote-from-excel");
+    });
+
+    btnDownloadPdf.addEventListener("click", () => {
+      if (!lastQuotationId) {
+        statusEl.textContent = "Es ist noch keine Angebots-ID vorhanden.";
+        statusEl.className = "status error";
+        return;
+      }
+      const url = "/download-quote-pdf?id=" + encodeURIComponent(lastQuotationId);
+      window.location.href = url;
+    });
+  </script>
 </body>
 </html>
