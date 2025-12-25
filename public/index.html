@@ -152,6 +152,7 @@
       color: #f9fafb;
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
       transition: transform 0.06s ease, box-shadow 0.06s ease, opacity 0.1s ease;
+      text-decoration: none;
     }
 
     button span.icon {
@@ -263,6 +264,48 @@
       font-weight: 600;
     }
 
+    /* Template-Download-Kasten */
+    .template-box {
+      margin-top: 18px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px dashed var(--ms-border);
+      background: #f9fafb;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .template-box-text {
+      color: #4b5563;
+    }
+
+    .template-box-text strong {
+      color: var(--ms-primary);
+    }
+
+    .link-button {
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #e5e7eb;
+      color: #111827;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .link-button .icon {
+      font-size: 14px;
+    }
+
     @media (max-width: 640px) {
       .app {
         margin: 16px;
@@ -275,6 +318,9 @@
       .panel {
         padding: 10px;
       }
+      .template-box {
+        align-items: flex-start;
+      }
     }
   </style>
 </head>
@@ -283,7 +329,8 @@
     <header class="header">
       <div class="logo-wrap">
         <!-- Optional: eigenes Logo in /public/maiershirts-logo.svg -->
-        <img src="/maiershirts-logo.svg" alt="Maiershirts Logo" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+        <img src="/maiershirts-logo.svg" alt="Maiershirts Logo"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
         <span class="logo-fallback" style="display:none;">MS</span>
       </div>
       <div class="title-block">
@@ -299,11 +346,23 @@
       </div>
     </header>
 
+    <!-- NEU: Template herunterladen -->
+    <div class="template-box">
+      <div class="template-box-text">
+        <strong>Excel-Template herunterladen</strong><br />
+        Nutze dieses Template als Grundlage für <em>Angebot</em>, <em>Kunde</em> und <em>Positionen</em>.
+      </div>
+      <a href="/download-template-with-articles" class="link-button">
+        <span class="icon">⬇️</span>
+        <span>Template herunterladen</span>
+      </a>
+    </div>
+
     <section class="section">
       <label for="excelFile">Excel-Datei (.xlsx)</label>
       <input type="file" id="excelFile" accept=".xlsx,.xls" />
       <div class="hint">
-        Nutze das Lexoffice-Export/Template (Sheets: <strong>Angebot</strong>, <strong>Kunde</strong>, <strong>Positionen</strong>).
+        Bitte das Maiershirts/Lexoffice-Template verwenden (Sheets: <strong>Angebot</strong>, <strong>Kunde</strong>, <strong>Positionen</strong>).
       </div>
 
       <div class="button-row">
