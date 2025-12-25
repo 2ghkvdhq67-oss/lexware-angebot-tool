@@ -8,46 +8,27 @@ import xlsx from "xlsx";
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
+const BASE_URL = "https://api.lexware.io";
+
 app.use(express.static(path.resolve("./public")));
 
 // Health
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// Template Download
-app.get("/download-template-with-articles", (_req, res) => {
-  const p = path.resolve("./templates/Lexware_Template.xlsx");
-  if (!fs.existsSync(p))
-    return res.status(500).json({ ok:false, message:"Template fehlt" });
-  res.download(p, "Lexware_Template.xlsx");
-});
-
-// API Test
-app.get("/api-test", async (_req, res) => {
-  try {
-    const r = await fetch("https://api.lexware.io/v1/profile", {
-      headers: {
-        Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
-        Accept: "application/json"
-      }
-    });
-    if (!r.ok) return res.status(500).json({ ok:false, status:r.status });
-    const d = await r.json();
-    res.json({ ok:true, org:d.organizationName || "OK" });
-  } catch (e) {
-    res.status(500).json({ ok:false, error:String(e) });
-  }
-});
-
-// helper für lesbare Fehlermeldungen
+// --------- Helper: Zahlen & Fehler ---------
 function validationError(message, sheet, row, field) {
   return {
-    ok:false,
-    message:`${message} Tabelle: ${sheet}, Zeile ${row}`,
-    details:{ sheet, row, field }
+    ok: false,
+    status: "ERROR",
+    stage: "validation",
+    message,
+    sheet,
+    row,
+    field
   };
 }
 
-// helper: Zahl aus Excel parsen, inkl. "6,9"
+// Zahl aus Excel robust parsen (inkl. "6,9")
 function parseNumberValue(value) {
   if (value === undefined || value === null || value === "") return NaN;
   if (typeof value === "string") {
@@ -57,87 +38,307 @@ function parseNumberValue(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+// Einfache OK-Antwort
+function successResponse(action, extra = {}) {
+  return {
+    ok: true,
+    status: "OK",
+    action,
+    ...extra
+  };
+}
+
+// --------- Helper: alle Artikel holen (paging) ---------
+async function fetchAllArticles() {
+  if (!process.env.LEXWARE_API_KEY) {
+    // Ohne API-Key können wir keine Artikel holen
+    return [];
+  }
+
+  const articles = [];
+  let page = 0;
+  const pageSize = 100;
+
+  // einfache Paging-Schleife mit Sicherheitslimit
+  // siehe Doku: GET {resourceurl}/v1/articles?page=0&size=...
+  while (true) {
+    const url = `${BASE_URL}/v1/articles?page=${page}&size=${pageSize}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
+        Accept: "application/json"
+      }
+    });
+
+    if (!res.ok) {
+      throw new Error(`Artikel konnten nicht geladen werden (HTTP ${res.status})`);
+    }
+
+    const data = await res.json();
+    if (Array.isArray(data.content)) {
+      articles.push(...data.content);
+    }
+
+    const isLast = data.last === true;
+    const totalPages = typeof data.totalPages === "number" ? data.totalPages : null;
+
+    if (isLast) break;
+    if (totalPages !== null && page >= totalPages - 1) break;
+
+    page += 1;
+    if (page > 50) break; // hartes Sicherheitslimit (max. ~5.000 Artikel)
+  }
+
+  return articles;
+}
+
+// --------- Template Download (mit Artikel-Lookup) ---------
+app.get("/download-template-with-articles", async (_req, res) => {
+  const p = path.resolve("./templates/Lexware_Template.xlsx");
+  if (!fs.existsSync(p)) {
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "server",
+      message: "Template fehlt auf dem Server"
+    });
+  }
+
+  // Basis-Template laden
+  let wb;
+  try {
+    const fileBuf = fs.readFileSync(p);
+    wb = xlsx.read(fileBuf, { type: "buffer" });
+  } catch (e) {
+    console.error("Fehler beim Lesen des Template-Excels:", e);
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "server",
+      message: "Template-Datei kann nicht gelesen werden"
+    });
+  }
+
+  // Versuchen, Artikel aus Lexware zu holen – bei Fehler einfach ungefülltes Template liefern
+  try {
+    const articles = await fetchAllArticles();
+
+    if (articles.length > 0) {
+      const sheetName = "Artikel-Lookup";
+      const header = [
+        "id",
+        "title",
+        "articleNumber",
+        "unitName",
+        "netPrice",
+        "grossPrice",
+        "taxRate"
+      ];
+
+      const rows = articles.map((a) => [
+        a.id || "",
+        a.title || "",
+        a.articleNumber || "",
+        a.unitName || "",
+        a.price && typeof a.price.netPrice === "number" ? a.price.netPrice : "",
+        a.price && typeof a.price.grossPrice === "number" ? a.price.grossPrice : "",
+        a.price && typeof a.price.taxRate === "number" ? a.price.taxRate : ""
+      ]);
+
+      const data = [header, ...rows];
+      const ws = xlsx.utils.aoa_to_sheet(data);
+
+      wb.Sheets[sheetName] = ws;
+      if (!wb.SheetNames.includes(sheetName)) {
+        wb.SheetNames.push(sheetName);
+      }
+    } else {
+      console.log("Keine Artikel aus Lexware erhalten – Artikel-Lookup bleibt leer.");
+    }
+  } catch (e) {
+    console.error("Fehler beim Laden der Artikel für das Template:", e);
+    // Fallback: trotzdem Template ausliefern, nur ohne Artikel
+  }
+
+  // Workbook zurück an den Browser
+  try {
+    const outBuf = xlsx.write(wb, { bookType: "xlsx", type: "buffer" });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Lexware_Template_mit_Artikeln.xlsx"'
+    );
+    return res.send(outBuf);
+  } catch (e) {
+    console.error("Fehler beim Schreiben des Template-Excels:", e);
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "server",
+      message: "Template konnte nicht erzeugt werden"
+    });
+  }
+});
+
+// --------- API Test ---------
+app.get("/api-test", async (_req, res) => {
+  try {
+    const r = await fetch(`${BASE_URL}/v1/profile`, {
+      headers: {
+        Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
+        Accept: "application/json"
+      }
+    });
+    if (!r.ok) {
+      return res.status(500).json({
+        ok: false,
+        status: "ERROR",
+        stage: "api-test",
+        message: "API-Verbindung fehlgeschlagen",
+        httpStatus: r.status
+      });
+    }
+    const d = await r.json();
+    res.json({
+      ok: true,
+      status: "OK",
+      stage: "api-test",
+      organization: d.organizationName || "OK"
+    });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "api-test",
+      message: "API-Test fehlgeschlagen",
+      technical: String(e)
+    });
+  }
+});
+
 // --------- Gemeinsame Funktion: Excel einlesen & validieren ---------
 function parseAndValidateExcel(buffer) {
   let wb;
   try {
-    wb = xlsx.read(buffer, { type:"buffer" });
+    wb = xlsx.read(buffer, { type: "buffer" });
   } catch {
     return {
-      ok:false,
-      status:400,
-      error:{ ok:false, message:"Excel-Datei kann nicht gelesen werden" }
+      ok: false,
+      statusCode: 400,
+      body: {
+        ok: false,
+        status: "ERROR",
+        stage: "validation",
+        message: "Excel-Datei kann nicht gelesen werden"
+      }
     };
   }
 
   // Pflicht-Sheets
-  for (const s of ["Angebot","Kunde","Positionen"]) {
+  for (const s of ["Angebot", "Kunde", "Positionen"]) {
     if (!wb.Sheets[s]) {
       return {
-        ok:false,
-        status:422,
-        error:{ ok:false, message:`Tabelle fehlt: ${s}`, details:{ sheet:s } }
+        ok: false,
+        statusCode: 422,
+        body: {
+          ok: false,
+          status: "ERROR",
+          stage: "validation",
+          message: `Tabelle fehlt: ${s}`,
+          sheet: s
+        }
       };
     }
   }
 
   // Angebot
   const angebot = Object.fromEntries(
-    xlsx.utils.sheet_to_json(wb.Sheets["Angebot"], { header:1, defval:"" })
-      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
+    xlsx.utils
+      .sheet_to_json(wb.Sheets["Angebot"], { header: 1, defval: "" })
+      .slice(1)
+      .filter((r) => r[0])
+      .map((r) => [r[0], r[1]])
   );
   if (!angebot.taxType) {
     return {
-      ok:false,
-      status:422,
-      error:{ ok:false, message:"Feld fehlt: Angebot.taxType", details:{sheet:"Angebot", field:"taxType"} }
+      ok: false,
+      statusCode: 422,
+      body: {
+        ok: false,
+        status: "ERROR",
+        stage: "validation",
+        message: "Feld fehlt: Angebot.taxType",
+        sheet: "Angebot",
+        field: "taxType"
+      }
     };
   }
 
   // Kunde
   const kunde = Object.fromEntries(
-    xlsx.utils.sheet_to_json(wb.Sheets["Kunde"], { header:1, defval:"" })
-      .slice(1).filter(r=>r[0]).map(r=>[r[0], r[1]])
+    xlsx.utils
+      .sheet_to_json(wb.Sheets["Kunde"], { header: 1, defval: "" })
+      .slice(1)
+      .filter((r) => r[0])
+      .map((r) => [r[0], r[1]])
   );
   if (!kunde.name) {
     return {
-      ok:false,
-      status:422,
-      error:{ ok:false, message:"Feld fehlt: Kunde.name", details:{sheet:"Kunde", field:"name"} }
+      ok: false,
+      statusCode: 422,
+      body: {
+        ok: false,
+        status: "ERROR",
+        stage: "validation",
+        message: "Feld fehlt: Kunde.name",
+        sheet: "Kunde",
+        field: "name"
+      }
     };
   }
 
   // Positionen
-  const pos = xlsx.utils.sheet_to_json(wb.Sheets["Positionen"], { defval:"" });
+  const pos = xlsx.utils.sheet_to_json(wb.Sheets["Positionen"], { defval: "" });
   if (!pos.length) {
     return {
-      ok:false,
-      status:422,
-      error:{ ok:false, message:"Keine Positionen vorhanden", details:{sheet:"Positionen"} }
+      ok: false,
+      statusCode: 422,
+      body: {
+        ok: false,
+        status: "ERROR",
+        stage: "validation",
+        message: "Keine Positionen vorhanden",
+        sheet: "Positionen"
+      }
     };
   }
 
   const byType = {};
-  for (let i=0;i<pos.length;i++){
+  for (let i = 0; i < pos.length; i++) {
     const r = pos[i];
-    const row = i+2;
+    const row = i + 2;
 
     if (!r.type || !r.name) {
       return {
-        ok:false,
-        status:422,
-        error:validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
+        ok: false,
+        statusCode: 422,
+        body: validationError("Typ oder Positionsname fehlt.", "Positionen", row, "type/name")
       };
     }
 
     // Menge: qty oder quantity
     const rawQty = r.qty ?? r.quantity;
     const qty = parseNumberValue(rawQty);
-    if (!Number.isFinite(qty) || qty<=0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       return {
-        ok:false,
-        status:422,
-        error:validationError(
+        ok: false,
+        statusCode: 422,
+        body: validationError(
           "Menge muss größer als 0 sein.",
           "Positionen",
           row,
@@ -149,11 +350,11 @@ function parseAndValidateExcel(buffer) {
     // Preis: price oder unitPriceAmount
     const rawPrice = r.price ?? r.unitPriceAmount;
     const price = parseNumberValue(rawPrice);
-    if (!Number.isFinite(price) || price<0) {
+    if (!Number.isFinite(price) || price < 0) {
       return {
-        ok:false,
-        status:422,
-        error:validationError(
+        ok: false,
+        statusCode: 422,
+        body: validationError(
           "Preis muss 0 oder größer sein.",
           "Positionen",
           row,
@@ -162,11 +363,11 @@ function parseAndValidateExcel(buffer) {
       };
     }
 
-    if (String(r.type).toLowerCase()==="material" && !r.articleId) {
+    if (String(r.type).toLowerCase() === "material" && !r.articleId) {
       return {
-        ok:false,
-        status:422,
-        error:validationError(
+        ok: false,
+        statusCode: 422,
+        body: validationError(
           "articleId ist für Material erforderlich.",
           "Positionen",
           row,
@@ -176,55 +377,75 @@ function parseAndValidateExcel(buffer) {
     }
 
     byType[r.type] = (byType[r.type] || 0) + 1;
-    // normalisierte Werte merken
     r.qty = qty;
     r.price = price;
   }
 
-  return { ok:true, angebot, kunde, pos, byType };
+  return {
+    ok: true,
+    angebot,
+    kunde,
+    pos,
+    byType
+  };
 }
 
 // --------- TESTMODUS: nur prüfen ---------
 app.post("/validate-excel", upload.single("file"), (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
+  if (!req.file) {
+    return res.status(400).json({
+      ok: false,
+      status: "ERROR",
+      stage: "validation",
+      message: "Keine Datei hochgeladen"
+    });
+  }
 
   const result = parseAndValidateExcel(req.file.buffer);
   if (!result.ok) {
-    return res.status(result.status).json(result.error);
+    return res.status(result.statusCode).json(result.body);
   }
 
   const { angebot, kunde, pos, byType } = result;
 
-  res.json({
-    ok:true,
-    summary:{
-      customer:kunde.name,
-      taxType:angebot.taxType,
-      positions:pos.length,
+  return res.json(
+    successResponse("validate", {
+      message: "Excel erfolgreich geprüft",
+      customer: kunde.name,
+      taxType: angebot.taxType,
+      positions: pos.length,
       byType
-    }
-  });
+    })
+  );
 });
 
-// --------- LIVE: Angebot erzeugen, JSON zurückgeben ---------
+// --------- LIVE: Angebot erzeugen ---------
 app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ ok:false, message:"Keine Datei hochgeladen" });
+  if (!req.file) {
+    return res.status(400).json({
+      ok: false,
+      status: "ERROR",
+      stage: "validation",
+      message: "Keine Datei hochgeladen"
+    });
+  }
 
   const result = parseAndValidateExcel(req.file.buffer);
   if (!result.ok) {
-    return res.status(result.status).json(result.error);
+    return res.status(result.statusCode).json(result.body);
   }
 
   if (!process.env.LEXWARE_API_KEY) {
-    return res.status(500).json({ ok:false, message:"LEXWARE_API_KEY ist nicht gesetzt" });
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "config",
+      message: "LEXWARE_API_KEY ist nicht gesetzt"
+    });
   }
 
   const { angebot, kunde, pos, byType } = result;
-  const baseUrl = "https://api.lexware.io";
 
-  // Angebots-Payload aufbauen (vereinfachte Version)
   const now = new Date();
   const voucherDate = angebot.voucherDate ? new Date(angebot.voucherDate) : now;
   const expirationDate = angebot.expirationDate
@@ -298,7 +519,7 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
   };
 
   try {
-    const createRes = await fetch(`${baseUrl}/v1/quotations?finalize=true`, {
+    const createRes = await fetch(`${BASE_URL}/v1/quotations?finalize=true`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.LEXWARE_API_KEY}`,
@@ -310,57 +531,70 @@ app.post("/create-quote-from-excel", upload.single("file"), async (req, res) => 
 
     if (!createRes.ok) {
       let errorBody = null;
-      try { errorBody = await createRes.json(); } catch {}
+      try {
+        errorBody = await createRes.json();
+      } catch {
+        // ignore
+      }
       return res.status(502).json({
-        ok:false,
-        message:"Fehler beim Erstellen des Angebots in Lexware",
-        status:createRes.status,
-        error:errorBody
+        ok: false,
+        status: "ERROR",
+        stage: "lexoffice-create",
+        message: "Fehler beim Erstellen des Angebots in Lexoffice",
+        httpStatus: createRes.status,
+        technical: errorBody
       });
     }
 
     const quotation = await createRes.json();
     const quotationId = quotation.id;
 
-    // Nur JSON zurückgeben – kein PDF hier
-    return res.json({
-      ok:true,
-      message:"Angebot in Lexware erstellt",
-      quotationId,
-      summary:{
-        customer:kunde.name,
-        taxType:angebot.taxType,
-        positions:pos.length,
+    return res.json(
+      successResponse("create-quote", {
+        message: "Angebot in Lexoffice erstellt",
+        quotationId,
+        customer: kunde.name,
+        taxType: angebot.taxType,
+        positions: pos.length,
         byType
-      }
-    });
-
+      })
+    );
   } catch (e) {
-    console.error("Fehler Lexware-API:", e);
+    console.error("Fehler Lexoffice-API:", e);
     return res.status(500).json({
-      ok:false,
-      message:"Unerwarteter Fehler bei der Lexware-API",
-      error:String(e)
+      ok: false,
+      status: "ERROR",
+      stage: "lexoffice-create",
+      message: "Unerwarteter Fehler bei der Lexoffice-API",
+      technical: String(e)
     });
   }
 });
 
-// --------- PDF-Download: vorhandenes Angebot als PDF holen ---------
+// --------- PDF-Download ---------
 app.get("/download-quote-pdf", async (req, res) => {
   const quotationId = req.query.id;
   if (!quotationId) {
-    return res.status(400).json({ ok:false, message:"quotationId fehlt" });
+    return res.status(400).json({
+      ok: false,
+      status: "ERROR",
+      stage: "pdf",
+      message: "quotationId fehlt"
+    });
   }
 
   if (!process.env.LEXWARE_API_KEY) {
-    return res.status(500).json({ ok:false, message:"LEXWARE_API_KEY ist nicht gesetzt" });
+    return res.status(500).json({
+      ok: false,
+      status: "ERROR",
+      stage: "config",
+      message: "LEXWARE_API_KEY ist nicht gesetzt"
+    });
   }
-
-  const baseUrl = "https://api.lexware.io";
 
   try {
     const fileRes = await fetch(
-      `${baseUrl}/v1/quotations/${encodeURIComponent(quotationId)}/file`,
+      `${BASE_URL}/v1/quotations/${encodeURIComponent(quotationId)}/file`,
       {
         method: "GET",
         headers: {
@@ -372,16 +606,22 @@ app.get("/download-quote-pdf", async (req, res) => {
 
     if (!fileRes.ok) {
       let errorText = null;
-      try { errorText = await fileRes.text(); } catch {}
+      try {
+        errorText = await fileRes.text();
+      } catch {
+        // ignore
+      }
       const isRateLimit = fileRes.status === 429;
 
       return res.status(fileRes.status).json({
-        ok:false,
+        ok: false,
+        status: "ERROR",
+        stage: "pdf",
         message: isRateLimit
-          ? "PDF kann aktuell nicht geladen werden (Lexware-Rate-Limit 429). Bitte später erneut versuchen oder das Angebot direkt in Lexoffice öffnen."
+          ? "PDF kann aktuell nicht geladen werden (Lexoffice-Rate-Limit 429). Bitte später erneut versuchen oder das Angebot direkt in Lexoffice öffnen."
           : "PDF konnte nicht geladen werden.",
-        status:fileRes.status,
-        error:errorText
+        httpStatus: fileRes.status,
+        technical: errorText
       });
     }
 
@@ -403,12 +643,16 @@ app.get("/download-quote-pdf", async (req, res) => {
   } catch (e) {
     console.error("Fehler beim PDF-Download:", e);
     return res.status(500).json({
-      ok:false,
-      message:"Unerwarteter Fehler beim PDF-Download",
-      error:String(e)
+      ok: false,
+      status: "ERROR",
+      stage: "pdf",
+      message: "Unerwarteter Fehler beim PDF-Download",
+      technical: String(e)
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=>console.log("Server läuft"));
+app.listen(PORT, () => {
+  console.log("Server läuft");
+});
