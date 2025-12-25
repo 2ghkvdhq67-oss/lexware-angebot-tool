@@ -17,7 +17,10 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/download-template-with-articles", (_req, res) => {
   const p = path.resolve("./templates/Lexware_Template.xlsx");
   if (!fs.existsSync(p))
-    return res.status(500).json({ ok:false, message:"Template-Datei fehlt auf dem Server" });
+    return res.status(500).json({
+      ok:false,
+      message:"Template-Datei fehlt auf dem Server"
+    });
 
   res.download(p, "Lexware_Template.xlsx");
 });
@@ -47,7 +50,7 @@ app.get("/api-test", async (_req, res) => {
   } catch (e) {
     res.status(500).json({
       ok:false,
-      message:"API-Test konnte nicht ausgeführt werden",
+      message:"API-Test fehlgeschlagen",
       error:String(e)
     });
   }
@@ -55,7 +58,7 @@ app.get("/api-test", async (_req, res) => {
 
 
 // ---------------------------------------------------------
-// Helper für Klartext-Fehlermeldungen
+// Helper für klare Fehlermeldungen
 // ---------------------------------------------------------
 function validationError(message, sheet, row, field) {
   return {
@@ -67,35 +70,18 @@ function validationError(message, sheet, row, field) {
 
 
 // ---------------------------------------------------------
-// TESTMODUS — Excel prüfen & verständliche Fehlermeldungen
+// TESTMODUS — Excel prüfen
 // ---------------------------------------------------------
 app.post("/validate-excel", upload.single("file"), (req, res) => {
 
   if (!req.file)
     return res.status(400).json({
       ok:false,
-      message:"Es wurde keine Datei hochgeladen"
+      message:"Keine Datei hochgeladen"
     });
 
   let wb;
   try {
     wb = xlsx.read(req.file.buffer, { type:"buffer" });
   } catch {
-    return res.status(400).json({
-      ok:false,
-      message:"Die Excel-Datei konnte nicht gelesen werden"
-    });
-  }
-
-  // Pflicht-Sheets
-  for (const s of ["Angebot","Kunde","Positionen"]) {
-    if (!wb.Sheets[s])
-      return res.status(422).json({
-        ok:false,
-        message:`Die Tabelle "${s}" fehlt in der Excel-Datei`,
-        details:{ sheet:s }
-      });
-  }
-
-  // Angebot
-  const angebot =
+    return res
