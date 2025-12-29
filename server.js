@@ -1,20 +1,20 @@
 'use strict';
 
 /**
- * Maiershirts — Lexoffice / Lexware Angebots-Tool Backend
- * ------------------------------------------------------
- * Features:
- *  - Passwortschutz (optional via TOOL_PASSWORD)
- *  - Schalter: allowPriceOverride
- *  - Testmodus / Validierung
- *  - Angebot erstellen & finalisieren
- *  - Zentraler Rate-Limiter (mind. 600ms Abstand)
- *  - Saubere 429-Behandlung (RATE_LIMIT → kein Retry)
- *  - Excel-Upload (Base64 oder Buffer)
- *  - Liefert deinen vorhandenen public/ Ordner aus (index.html)
+ * Maiershirts — Lexoffice Angebots-Tool Backend
+ * --------------------------------------------
+ * Funktionen:
+ *  ✔ Passwortschutz (optional via TOOL_PASSWORD)
+ *  ✔ Testmodus / Validierung
+ *  ✔ Angebot erstellen
+ *  ✔ Preis-Override Schalter (optional)
+ *  ✔ Automatisches Ergänzen von Artikelnamen
+ *  ✔ Rate-Limiter (mind. 600ms Abstand zu API Calls)
+ *  ✔ Strukturierte Fehlermeldungen
+ *  ✔ Statisches Frontend aus /public
  */
 
-const path = require('path');          // ✅ NEU: für public-Ordner
+const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -26,225 +26,179 @@ dotenv.config();
 const app = express();
 app.use(bodyParser.json({ limit: '10mb' }));
 
-// ✅ NEU: Statische Dateien aus public/ ausliefern (index.html, JS, CSS, …)
+// 👉 Frontend aus /public Ordner bereitstellen
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ------------------------------------------------------
-// ENV Konfiguration
-// ------------------------------------------------------
+// ----------------------------------------------------
+// ENV Variablen
+// ----------------------------------------------------
 
 const LEXOFFICE_API_KEY = process.env.LEXOFFICE_API_KEY || '';
 const TOOL_PASSWORD = process.env.TOOL_PASSWORD || '';
+
 const ALLOW_PRICE_OVERRIDE_DEFAULT =
   (process.env.ALLOW_PRICE_OVERRIDE || 'false').toLowerCase() === 'true';
 
 const MIN_INTERVAL_MS = parseInt(process.env.LEXWARE_MIN_INTERVAL_MS || '600', 10);
 
-if (!LEXOFFICE_API_KEY) {
-  console.warn('[WARNUNG] LEXOFFICE_API_KEY ist nicht gesetzt.');
+console.log('[INFO] Rate-Limiter aktiv:', MIN_INTERVAL_MS, 'ms');
+
+// ----------------------------------------------------
+// Rate Limiter
+// ----------------------------------------------------
+
+let lastCall = 0;
+
+async function wait(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
-console.log('[INFO] Rate-Limit Mindestabstand:', MIN_INTERVAL_MS, 'ms');
-
-// ------------------------------------------------------
-// Zentraler Rate-Limiter
-// ------------------------------------------------------
-
-let lastLexwareCallTime = 0;
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function callLexwareApi(axiosConfig) {
-
-  const now = Date.now();
-  const elapsed = now - lastLexwareCallTime;
-
-  if (elapsed < MIN_INTERVAL_MS) {
-    await sleep(MIN_INTERVAL_MS - elapsed);
+async function callLexoffice(config) {
+  const diff = Date.now() - lastCall;
+  if (diff < MIN_INTERVAL_MS) {
+    await wait(MIN_INTERVAL_MS - diff);
   }
 
-  const res = await axios(axiosConfig);
-
-  lastLexwareCallTime = Date.now();
+  const res = await axios(config);
+  lastCall = Date.now();
   return res;
 }
 
-// ------------------------------------------------------
+// ----------------------------------------------------
 // Passwortschutz (optional)
-// ------------------------------------------------------
+// ----------------------------------------------------
 
 function passwordMiddleware(req, res, next) {
+  if (!TOOL_PASSWORD) return next();
 
-  if (!TOOL_PASSWORD)
-    return next();
-
-  const provided =
-    req.headers['x-tool-password'] ||
+  const supplied =
     req.body?.password ||
+    req.headers['x-tool-password'] ||
     req.query?.password;
 
-  if (provided !== TOOL_PASSWORD) {
+  if (supplied !== TOOL_PASSWORD) {
     return res.status(401).json({
       ok: false,
-      status: 'UNAUTHORIZED',
       stage: 'auth',
-      message: 'Zugriff verweigert. Passwort ungültig oder fehlt.'
+      status: 'UNAUTHORIZED',
+      message: 'Passwort ungültig oder fehlt'
     });
   }
 
   next();
 }
 
-// ------------------------------------------------------
-// Excel → Payload Mapping & Validierung
-// ------------------------------------------------------
+// ----------------------------------------------------
+// Excel Parser & Validierung
+// ----------------------------------------------------
 
-async function parseExcelAndBuildQuotationPayload(excelData, options) {
+async function parseExcel(excelData, options = {}) {
+  const { allowPriceOverride } = options;
 
-  const { allowPriceOverride, mode } = options || {};
-
-  // Excel einlesen
   let workbook;
 
-  if (Buffer.isBuffer(excelData)) {
-    workbook = XLSX.read(excelData, { type: 'buffer' });
-  } else if (typeof excelData === 'string') {
+  if (typeof excelData === 'string') {
     const buf = Buffer.from(excelData, 'base64');
     workbook = XLSX.read(buf, { type: 'buffer' });
+  } else if (Buffer.isBuffer(excelData)) {
+    workbook = XLSX.read(excelData, { type: 'buffer' });
   } else {
-    const err = new Error('excelData Format unbekannt (erwartet Buffer oder Base64-String)');
-    err.status = 400;
-    throw err;
+    throw new Error('excelData Format ungültig');
   }
 
-  function sheetJson(name, required = true) {
-    const sheet = workbook.Sheets[name];
-    if (!sheet) return { rows: [], missing: required };
-    return { rows: XLSX.utils.sheet_to_json(sheet, { defval: '' }), missing: false };
+  function readSheet(name) {
+    const sh = workbook.Sheets[name];
+    return sh ? XLSX.utils.sheet_to_json(sh, { defval: '' }) : null;
   }
 
-  const angebot = sheetJson('Angebot', true);
-  const kunde = sheetJson('Kunde', true);
-  const positionen = sheetJson('Positionen', true);
+  const angebot = readSheet('Angebot');
+  const kunde = readSheet('Kunde');
+  const positionen = readSheet('Positionen');
 
   const errors = [];
   const warnings = [];
-  const autoNamedLineItems = [];
+  const autoNamed = [];
   const byType = {};
 
-  // Pflicht-Sheets
-  if (angebot.missing)
-    errors.push({ sheet: 'Angebot', message: 'Tab „Angebot“ fehlt.' });
+  if (!angebot) errors.push({ sheet: 'Angebot', message: 'Sheet fehlt' });
+  if (!kunde) errors.push({ sheet: 'Kunde', message: 'Sheet fehlt' });
+  if (!positionen) errors.push({ sheet: 'Positionen', message: 'Sheet fehlt' });
 
-  if (kunde.missing)
-    errors.push({ sheet: 'Kunde', message: 'Tab „Kunde“ fehlt.' });
-
-  if (positionen.missing)
-    errors.push({ sheet: 'Positionen', message: 'Tab „Positionen“ fehlt.' });
-
-  if (errors.length)
-    return { quotationPayload: null, summary: { byType, warnings, errors, autoNamedLineItems } };
-
-  // Angebot
-  const angebotRow = angebot.rows[0] || {};
-  const taxType =
-    angebotRow.taxType ||
-    angebotRow.TAXTYPE ||
-    angebotRow.tax ||
-    '';
-
-  if (!taxType) {
-    errors.push({
-      sheet: 'Angebot',
-      row: 2,
-      field: 'taxType',
-      message: 'taxType ist Pflicht.'
-    });
+  if (errors.length) {
+    return { quotation: null, summary: { errors, warnings, autoNamed, byType } };
   }
 
-  // Kunde
-  const kundeRow = kunde.rows[0] || {};
+  const angebotRow = angebot[0] || {};
+  const taxType = angebotRow.taxType || angebotRow.TAXTYPE || '';
+
+  if (!taxType) {
+    errors.push({ sheet: 'Angebot', field: 'taxType', message: 'taxType ist Pflicht' });
+  }
+
+  const kundeRow = kunde[0] || {};
   const customerName = kundeRow.name || kundeRow.Name || '';
 
   if (!customerName) {
-    errors.push({
-      sheet: 'Kunde',
-      row: 2,
-      field: 'name',
-      message: 'Kundenname ist Pflicht.'
-    });
+    errors.push({ sheet: 'Kunde', field: 'name', message: 'Kundenname ist Pflicht' });
   }
 
   const address = {
     name: customerName,
-    street: kundeRow.street || kundeRow.Straße || '',
-    zip: kundeRow.zip || kundeRow.PLZ || '',
-    city: kundeRow.city || kundeRow.Ort || '',
+    street: kundeRow.street || '',
+    zip: kundeRow.zip || '',
+    city: kundeRow.city || '',
     countryCode: kundeRow.countryCode || 'DE'
   };
 
-  // Positionen
   const lineItems = [];
 
-  positionen.rows.forEach((row, idx) => {
+  positionen.forEach((row, i) => {
+    const excelRow = i + 2;
 
-    const excelRow = idx + 2;
-
-    const type = (row.type || row.Typ || '').toString().trim();
-    const qty = Number(row.qty || row.Menge || 0);
-    const articleId = (row.articleId || row.articleID || '').toString().trim();
-    const priceExcel = row.price || row.Preis || null;
-    const name = (row.name || row.Bezeichnung || '').toString().trim();
+    const type = (row.type || '').toString().trim();
+    const qty = Number(row.qty || 0);
+    const articleId = (row.articleId || '').toString().trim();
+    const priceExcel = row.price || null;
+    const name = (row.name || '').toString().trim();
 
     if (!type) {
-      errors.push({ sheet: 'Positionen', row: excelRow, field: 'type', message: 'type ist Pflicht.' });
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'type', message: 'type ist Pflicht' });
+      return;
+    }
+
+    if (!(qty > 0)) {
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'qty', message: 'qty > 0 erforderlich' });
       return;
     }
 
     if (!byType[type]) byType[type] = 0;
     byType[type]++;
 
-    if (!(qty > 0)) {
-      errors.push({ sheet: 'Positionen', row: excelRow, field: 'qty', message: 'qty muss > 0 sein.' });
-      return;
-    }
-
-    let useExcelPrice = false;
+    let usePrice = false;
 
     if (!articleId) {
-
-      if (priceExcel == null || priceExcel === '') {
+      if (!priceExcel) {
         errors.push({
           sheet: 'Positionen',
           row: excelRow,
           field: 'price',
-          message: 'Preis ist Pflicht, wenn keine articleId gesetzt ist.'
+          message: 'Preis erforderlich wenn keine articleId'
         });
         return;
       }
-
-      useExcelPrice = true;
-
+      usePrice = true;
     } else {
-
-      if (type === 'material')
-        useExcelPrice = false;
-
-      else if (allowPriceOverride)
-        useExcelPrice = true;
-
-      else
-        useExcelPrice = false;
+      if (type === 'material') usePrice = false;
+      else if (allowPriceOverride) usePrice = true;
+      else usePrice = false;
     }
 
     let finalName = name;
 
     if (!finalName && articleId) {
-      finalName = `(Name aus Artikel ${articleId})`;
-      autoNamedLineItems.push({ row: excelRow, articleId, name: finalName });
-      warnings.push({ row: excelRow, message: `Name automatisch aus Artikel ${articleId}` });
+      finalName = `(Artikel ${articleId})`;
+      autoNamed.push({ row: excelRow, articleId, name: finalName });
+      warnings.push({ row: excelRow, message: 'Name automatisch ergänzt' });
     }
 
     lineItems.push({
@@ -252,210 +206,158 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
       articleId: articleId || null,
       name: finalName || `Position ${excelRow}`,
       quantity: qty,
-      price: useExcelPrice ? Number(priceExcel) : null,
-      meta: {
-        excelRow,
-        sourcePrice: useExcelPrice ? 'excel' : 'article'
-      }
+      price: usePrice ? Number(priceExcel) : null
     });
   });
 
-  // Wenn Fehler → kein Payload erzeugen
   if (errors.length) {
     return {
-      quotationPayload: null,
-      summary: { byType, warnings, errors, autoNamedLineItems }
+      quotation: null,
+      summary: { errors, warnings, autoNamed, byType }
     };
   }
 
-  // Angebots-Payload (Schema ggf. erweitern)
-  const quotationPayload = {
+  const quotation = {
     voucherDate: new Date().toISOString().substring(0, 10),
-    address,
     taxType,
+    address,
     lineItems,
     finalized: true
   };
 
-  return {
-    quotationPayload,
-    summary: { byType, warnings, errors, autoNamedLineItems }
-  };
+  return { quotation, summary: { errors, warnings, autoNamed, byType } };
 }
 
-// ------------------------------------------------------
-// Lexoffice Angebot erstellen
-// ------------------------------------------------------
+// ----------------------------------------------------
+// Lexoffice — Angebot erstellen
+// ----------------------------------------------------
 
-async function createLexofficeQuotationInApi(payload) {
-
-  if (!LEXOFFICE_API_KEY) {
-    const err = new Error('API Key fehlt');
-    err.status = 500;
-    throw err;
-  }
-
-  const res = await callLexwareApi({
+async function createQuotation(payload) {
+  const res = await callLexoffice({
     method: 'POST',
     url: 'https://api.lexoffice.io/v1/quotations',
-    data: payload,
     headers: {
       Authorization: `Bearer ${LEXOFFICE_API_KEY}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
+      'Content-Type': 'application/json'
     },
+    data: payload,
     validateStatus: () => true
   });
 
   if (res.status === 429) {
-    const err = new Error('Rate limit exceeded');
-    err.status = 429;
-    err.raw = res.data;
-    throw err;
+    const e = new Error('Rate Limit');
+    e.status = 429;
+    throw e;
   }
 
   if (res.status < 200 || res.status >= 300) {
-    const err = new Error('Lexoffice Error');
-    err.status = res.status;
-    err.raw = res.data;
-    throw err;
+    const e = new Error('Lexoffice Fehler');
+    e.status = res.status;
+    e.raw = res.data;
+    throw e;
   }
 
   return res.data;
 }
 
-// ------------------------------------------------------
-// API ROUTES
-// ------------------------------------------------------
+// ----------------------------------------------------
+// API Routes
+// ----------------------------------------------------
 
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    status: 'OK',
     passwordProtected: !!TOOL_PASSWORD,
     allowPriceOverrideDefault: ALLOW_PRICE_OVERRIDE_DEFAULT,
     minIntervalMs: MIN_INTERVAL_MS
   });
 });
 
-// ---------------- Testmodus ----------------
-
+// Testmodus
 app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
-
   try {
+    const { excelData, allowPriceOverride } = req.body;
 
-    const { excelData, allowPriceOverride } = req.body || {};
-
-    if (!excelData)
-      return res.json({
-        ok: false,
-        status: 'VALIDATION_ERROR',
-        message: 'Excel fehlt',
-        httpStatus: 400
-      });
-
-    const result = await parseExcelAndBuildQuotationPayload(excelData, {
-      allowPriceOverride: typeof allowPriceOverride === 'boolean'
-        ? allowPriceOverride
-        : ALLOW_PRICE_OVERRIDE_DEFAULT,
-      mode: 'test'
+    const parsed = await parseExcel(excelData, {
+      allowPriceOverride:
+        typeof allowPriceOverride === 'boolean'
+          ? allowPriceOverride
+          : ALLOW_PRICE_OVERRIDE_DEFAULT
     });
 
-    const hasErrors = result.summary.errors.length > 0;
+    const hasErrors = parsed.summary.errors.length > 0;
 
-    return res.json({
+    res.json({
       ok: !hasErrors,
-      status: hasErrors ? 'VALIDATION_ERROR' : 'SUCCESS',
       stage: 'test',
-      data: result.summary
+      status: hasErrors ? 'VALIDATION_ERROR' : 'SUCCESS',
+      data: parsed.summary
     });
 
   } catch (err) {
-
-    console.error('[test-excel]', err);
-
     res.json({
       ok: false,
-      status: 'ERROR',
       stage: 'test',
-      message: err.message,
-      httpStatus: err.status || 500
+      status: 'ERROR',
+      message: err.message
     });
   }
 });
 
-// --------------- Angebot erstellen ---------------
-
+// Angebot erstellen
 app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
-
   try {
+    const { excelData, allowPriceOverride } = req.body;
 
-    const { excelData, allowPriceOverride } = req.body || {};
-
-    if (!excelData)
-      return res.json({
-        ok: false,
-        status: 'VALIDATION_ERROR',
-        message: 'Excel fehlt',
-        httpStatus: 400
-      });
-
-    const { quotationPayload, summary } =
-      await parseExcelAndBuildQuotationPayload(excelData, {
-        allowPriceOverride: typeof allowPriceOverride === 'boolean'
+    const parsed = await parseExcel(excelData, {
+      allowPriceOverride:
+        typeof allowPriceOverride === 'boolean'
           ? allowPriceOverride
-          : ALLOW_PRICE_OVERRIDE_DEFAULT,
-        mode: 'create'
-      });
+          : ALLOW_PRICE_OVERRIDE_DEFAULT
+    });
 
-    if (!quotationPayload)
+    if (!parsed.quotation) {
       return res.json({
         ok: false,
-        status: 'VALIDATION_ERROR',
         stage: 'validation',
-        message: 'Excel enthält Fehler',
-        data: summary
+        status: 'VALIDATION_ERROR',
+        data: parsed.summary
       });
+    }
 
-    const result = await createLexofficeQuotationInApi(quotationPayload);
+    const result = await createQuotation(parsed.quotation);
 
-    return res.json({
+    res.json({
       ok: true,
-      status: 'SUCCESS',
       stage: 'lexoffice-create',
+      status: 'SUCCESS',
       data: {
-        quotationId: result.id || null,
-        summary
+        quotationId: result.id,
+        summary: parsed.summary
       }
     });
 
   } catch (err) {
 
-    console.error('[create-offer]', err);
-
-    if (err.status === 429)
+    if (err.status === 429) {
       return res.json({
         ok: false,
         status: 'RATE_LIMIT',
         stage: 'lexoffice-create',
-        message: 'Rate-Limit — später erneut versuchen',
-        httpStatus: 429
+        message: 'Rate Limit — später erneut versuchen'
       });
+    }
 
     res.json({
       ok: false,
       status: 'ERROR',
       stage: 'lexoffice-create',
-      message: err.message,
-      httpStatus: err.status || 500
+      message: err.message
     });
   }
 });
 
-// ------------------------------------------------------
+// ----------------------------------------------------
 
 const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () =>
-  console.log('Backend läuft auf Port', PORT)
-);
+app.listen(PORT, () => console.log('Server läuft auf Port', PORT));
