@@ -32,16 +32,17 @@ button {
 .err { color: red; }
 .info { color: #444; }
 
-.error-item {
-  margin-left: 10px;
-  font-size: 13px;
-}
+.error-item { margin-left: 10px; font-size: 13px; }
 </style>
 </head>
 
 <body>
 
 <h2>Maiershirts — Lexoffice Angebots-Tool</h2>
+
+<div class="box">
+  <button id="btnTemplate">Excel-Template herunterladen</button>
+</div>
 
 <div class="box">
   <label>Tool-Passwort:</label><br>
@@ -86,39 +87,34 @@ async function readFileBase64(file) {
 
 function log(msg, cls = "") {
   const el = document.getElementById("log");
-  const div = document.createElement("div");
-  if (cls) div.className = cls;
-  div.textContent = msg;
-  el.prepend(div);
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  el.prepend(d);
 }
 
-function logErrorsFromSummary(summary) {
-  if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
-
-  log('Details zu den Fehlern:', 'info');
-  summary.errors.forEach(err => {
+function logErrors(summary) {
+  if (!summary?.errors?.length) return;
+  log("Details zu den Fehlern:", "info");
+  summary.errors.forEach(e => {
     const line = [
-      err.sheet ? `[${err.sheet}]` : '',
-      err.row ? `Zeile ${err.row}` : '',
-      err.field ? `Feld "${err.field}"` : '',
-      '→',
-      err.message || ''
-    ].filter(Boolean).join(' ');
-    log('  - ' + line, 'error-item');
+      e.sheet ? `[${e.sheet}]` : "",
+      e.row ? `Zeile ${e.row}` : "",
+      e.field ? `Feld "${e.field}"` : "",
+      "→",
+      e.message || ""
+    ].filter(Boolean).join(" ");
+    log("  - " + line, "error-item");
   });
 }
 
 async function callApi(endpoint) {
-  const fileInput = document.getElementById("file");
+  const file = document.getElementById("file").files[0];
+  if (!file) return log("Bitte eine Excel-Datei auswählen.", "err");
+
+  const excelData = await readFileBase64(file);
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
-
-  if (!fileInput.files[0]) {
-    log("Bitte zuerst eine Excel-Datei auswählen.", "err");
-    return;
-  }
-
-  const excelData = await readFileBase64(fileInput.files[0]);
 
   let data;
   try {
@@ -127,72 +123,46 @@ async function callApi(endpoint) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ excelData, password, allowPriceOverride })
     });
-
     data = await res.json();
-  } catch (e) {
-    console.error(e);
-    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
-    return;
+  } catch {
+    return log("❌ Serverfehler / Netzwerkfehler", "err");
   }
-
-  console.log("API Antwort:", data);
 
   if (!data.ok) {
-    const status = data.status || 'UNBEKANNT';
-    const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
-
-    log(`❌ Fehler (${status}): ${msg}`, "err");
-
-    // Detail-Fehler aus dem Summary-Objekt ausgeben
-    if (data.data && data.data.summary) {
-      logErrorsFromSummary(data.data.summary);
-    }
-
+    log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message}`, "err");
+    logErrors(data?.data?.summary);
     return;
   }
 
-  // Erfolgsfall
-  if (data.data && data.data.quotationId) {
+  if (data?.data?.quotationId) {
     log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
   } else {
-    log("🟢 Test erfolgreich — keine kritischen Fehler. ", "ok");
-  }
-
-  // Optional: Warnungen anzeigen
-  if (data.data && data.data.summary && Array.isArray(data.data.summary.warnings) && data.data.summary.warnings.length) {
-    log("Hinweise / Warnungen:", "info");
-    data.data.summary.warnings.forEach(w => {
-      const line = [
-        w.sheet ? `[${w.sheet}]` : '',
-        w.row ? `Zeile ${w.row}` : '',
-        w.message || ''
-      ].filter(Boolean).join(' ');
-      log('  - ' + line, 'error-item');
-    });
+    log("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
   }
 }
 
-// Buttons verbinden
+// Buttons
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
-// Systemstatus prüfen
+// Template-Download (GitHub-Ordner /templates)
+document.getElementById("btnTemplate").onclick = () => {
+  window.location.href = "/templates/lexware_template.xlsx";
+};
+
+// Systemstatus
 fetch("/api/ping")
   .then(r => r.json())
-  .then(d => {
-    const sys = document.getElementById("sys");
-    if (!d.ok) {
-      sys.textContent = "Backend antwortet, aber ok=false.";
-      return;
-    }
-    sys.textContent =
-      "Backend erreichbar — Rate-Limiter: " + d.minIntervalMs + " ms — Passwort: " +
-      (d.passwordProtected ? "aktiv" : "aus");
-  })
-  .catch(() => {
+  .then(d =>
     document.getElementById("sys").textContent =
-      "❌ Backend nicht erreichbar.";
-  });
+      "Backend erreichbar — Rate-Limiter: " +
+      d.minIntervalMs +
+      " ms — Passwort: " +
+      (d.passwordProtected ? "aktiv" : "aus")
+  )
+  .catch(() =>
+    document.getElementById("sys").textContent = "❌ Backend nicht erreichbar."
+  );
 </script>
 
 </body>
