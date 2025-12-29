@@ -1,45 +1,31 @@
-// server.js
-// ------------------------------------------------------
-// Lexoffice / Lexware Angebots-Tool Backend (Maiershirts)
-// - Passwortschutz (optional via ENV TOOL_PASSWORD)
-// - Schalter: allowPriceOverride (ENV + Request-Body)
-// - Endpoints: /api/test-excel, /api/create-offer, /api/ping
-// - Zentraler Rate-Limiter für Lexware-API (min. Abstand)
-// - Saubere Rate-Limit-Behandlung (HTTP 429)
-// - Garantiert nur EIN Create-Call pro Anfrage
-// ------------------------------------------------------
-
 'use strict';
+
+/**
+ * Maiershirts — Lexoffice / Lexware Angebots-Tool Backend
+ * ------------------------------------------------------
+ * Features:
+ *  - Passwortschutz (optional via TOOL_PASSWORD)
+ *  - Schalter: allowPriceOverride
+ *  - Testmodus / Validierung
+ *  - Angebot erstellen & finalisieren
+ *  - Zentraler Rate-Limiter (mind. 600ms Abstand)
+ *  - Saubere 429-Behandlung (RATE_LIMIT → kein Retry)
+ *  - Excel-Upload (Base64 oder Buffer)
+ */
 
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const XLSX = require('xlsx');
 
 dotenv.config();
 
 const app = express();
-
-// Body Parser für JSON (Frontend sendet JSON)
 app.use(bodyParser.json({ limit: '10mb' }));
 
 // ------------------------------------------------------
-// Konfiguration über ENV Variablen
-// ------------------------------------------------------
-//
-// LEXOFFICE_API_KEY         = dein Lexware/Lexoffice API-Key
-// TOOL_PASSWORD             = optionales Passwort für UI (leer = kein Schutz)
-// ALLOW_PRICE_OVERRIDE      = 'true' oder 'false' (Default für Schalter)
-// LEXWARE_MIN_INTERVAL_MS   = min. Abstand zwischen API-Calls in ms (Default: 600)
-// PORT                      = Port für Express (z. B. 3000)
-//
-// Beispiel .env:
-//
-// LEXOFFICE_API_KEY=xxxx
-// TOOL_PASSWORD=meinGeheimesPasswort
-// ALLOW_PRICE_OVERRIDE=false
-// LEXWARE_MIN_INTERVAL_MS=600
-// PORT=3000
+// ENV Konfiguration
 // ------------------------------------------------------
 
 const LEXOFFICE_API_KEY = process.env.LEXOFFICE_API_KEY || '';
@@ -50,71 +36,49 @@ const ALLOW_PRICE_OVERRIDE_DEFAULT =
 const MIN_INTERVAL_MS = parseInt(process.env.LEXWARE_MIN_INTERVAL_MS || '600', 10);
 
 if (!LEXOFFICE_API_KEY) {
-  console.warn(
-    '[WARNUNG] LEXOFFICE_API_KEY ist nicht gesetzt. Lexware/Lexoffice-Aufrufe werden fehlschlagen.'
-  );
+  console.warn('[WARNUNG] LEXOFFICE_API_KEY ist nicht gesetzt.');
 }
 
-console.log('[INFO] MIN_INTERVAL_MS (Rate-Limit-Puffer):', MIN_INTERVAL_MS, 'ms');
+console.log('[INFO] Rate-Limit Mindestabstand:', MIN_INTERVAL_MS, 'ms');
 
 // ------------------------------------------------------
-// Zentraler Rate-Limiter für alle Lexware/Lexoffice API-Calls
-// ------------------------------------------------------
-//
-// Lexware erlaubt 2 Requests/Sekunde. Durch einen Mindestabstand von
-// z.B. 600–700 ms bleiben wir sicher darunter (Puffer für Netzwerk-Jitter).
-//
-// Alle API-Calls Richtung Lexware/Lexoffice SOLLEN über diese Funktion laufen.
+// Zentraler Rate-Limiter
 // ------------------------------------------------------
 
 let lastLexwareCallTime = 0;
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Wrapper für alle Lexware/Lexoffice-Requests.
- * Stellt sicher, dass zwischen zwei Aufrufen mindestens MIN_INTERVAL_MS vergeht.
- *
- * @param {Object} axiosConfig - Config für axios (method, url, headers, data, etc.)
- * @returns axios Response
- */
 async function callLexwareApi(axiosConfig) {
+
   const now = Date.now();
   const elapsed = now - lastLexwareCallTime;
 
   if (elapsed < MIN_INTERVAL_MS) {
-    const waitMs = MIN_INTERVAL_MS - elapsed;
-    // Optionale Logging-Ausgabe:
-    // console.log(`[RateLimiter] Warte ${waitMs} ms vor dem nächsten Lexware-Call`);
-    await sleep(waitMs);
+    await sleep(MIN_INTERVAL_MS - elapsed);
   }
 
-  // Jetzt API-Call ausführen
   const res = await axios(axiosConfig);
 
-  // Zeitstempel aktualisieren
   lastLexwareCallTime = Date.now();
-
   return res;
 }
 
 // ------------------------------------------------------
-// Middleware: einfacher Passwortschutz (optional)
+// Passwortschutz (optional)
 // ------------------------------------------------------
 
 function passwordMiddleware(req, res, next) {
-  if (!TOOL_PASSWORD) {
-    // Kein Passwort konfiguriert -> kein Schutz aktiv
-    return next();
-  }
 
-  // Passwort kann z.B. im Header oder Body mitgeschickt werden
+  if (!TOOL_PASSWORD)
+    return next();
+
   const provided =
     req.headers['x-tool-password'] ||
-    (req.body && req.body.password) ||
-    (req.query && req.query.password);
+    req.body?.password ||
+    req.query?.password;
 
   if (provided !== TOOL_PASSWORD) {
     return res.status(401).json({
@@ -129,100 +93,215 @@ function passwordMiddleware(req, res, next) {
 }
 
 // ------------------------------------------------------
-// Hilfsfunktion: Excel-Daten validieren & Payload bauen
-// ------------------------------------------------------
-//
-// HIER musst du deine bestehende Excel-Verarbeitung integrieren.
-// Aktuell ist das nur ein Platzhalter mit Struktur.
-// excelData kann z.B. ein Base64-String oder bereits geparstes JSON sein.
+// Excel → Payload Mapping & Validierung
 // ------------------------------------------------------
 
 async function parseExcelAndBuildQuotationPayload(excelData, options) {
+
   const { allowPriceOverride, mode } = options || {};
 
-  // TODO: Deine echte Excel-Logik einbauen:
-  // - Template-Struktur prüfen (Sheets: Angebot / Kunde / Positionen)
-  // - Pflichtfelder prüfen (taxType, Kunde.name, type, qty, etc.)
-  // - Lexware/Artikel lookup für articleId
-  // - Name auto ergänzen, wenn leer
-  // - Preise ggf. aus Artikeln ziehen (Standard: immer aus Stammdaten)
-  // - allowPriceOverride beachten:
-  //   * false: Excel-Preis ignorieren, immer Artikelpreis verwenden
-  //   * true: Excel-Preis darf Stammpreis überschreiben (bewusst!)
+  // Excel einlesen
+  let workbook;
 
-  // Für jetzt: Beispiel-Struktur zurückgeben
-  const fakeQuotationPayload = {
-    // HIER ECHTEN Lexware/Lexoffice-Payload einfügen (z.B. Quotation)
-    voucherDate: new Date().toISOString().substring(0, 10),
-    address: {
-      name: 'Demo Kunde GmbH'
-    },
-    lineItems: [
-      // Beispiel-Positionen
-      // {
-      //   type: 'PRODUCT',
-      //   name: 'Beispielartikel',
-      //   quantity: 10,
-      //   // Preis je nach API-Schema
-      // }
-    ],
-    taxType: 'gross', // Beispiel
-    finalized: true // direkt finalisieren (falls API das unterstützt)
-  };
-
-  const summary = {
-    byType: {
-      material: 1,
-      service: 0
-    },
-    autoNamedLineItems: [
-      // { position: 1, row: 5, articleName: 'Beispielartikel' }
-    ],
-    warnings: [],
-    errors: [] // falls im Testmodus Fehler gefunden werden
-  };
-
-  // Beispiel: im Testmodus könnten hier valide Fehler reingeschrieben werden
-  if (mode === 'test') {
-    // summary.errors.push({ sheet: 'Kunde', row: 2, field: 'name', message: 'Pflichtfeld fehlt' });
+  if (Buffer.isBuffer(excelData)) {
+    workbook = XLSX.read(excelData, { type: 'buffer' });
+  } else if (typeof excelData === 'string') {
+    const buf = Buffer.from(excelData, 'base64');
+    workbook = XLSX.read(buf, { type: 'buffer' });
+  } else {
+    const err = new Error('excelData Format unbekannt (erwartet Buffer oder Base64-String)');
+    err.status = 400;
+    throw err;
   }
 
+  function sheetJson(name, required = true) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) return { rows: [], missing: required };
+    return { rows: XLSX.utils.sheet_to_json(sheet, { defval: '' }), missing: false };
+  }
+
+  const angebot = sheetJson('Angebot', true);
+  const kunde = sheetJson('Kunde', true);
+  const positionen = sheetJson('Positionen', true);
+
+  const errors = [];
+  const warnings = [];
+  const autoNamedLineItems = [];
+  const byType = {};
+
+  // Pflicht-Sheets
+  if (angebot.missing)
+    errors.push({ sheet: 'Angebot', message: 'Tab „Angebot“ fehlt.' });
+
+  if (kunde.missing)
+    errors.push({ sheet: 'Kunde', message: 'Tab „Kunde“ fehlt.' });
+
+  if (positionen.missing)
+    errors.push({ sheet: 'Positionen', message: 'Tab „Positionen“ fehlt.' });
+
+  if (errors.length)
+    return { quotationPayload: null, summary: { byType, warnings, errors, autoNamedLineItems } };
+
+  // Angebot
+  const angebotRow = angebot.rows[0] || {};
+  const taxType =
+    angebotRow.taxType ||
+    angebotRow.TAXTYPE ||
+    angebotRow.tax ||
+    '';
+
+  if (!taxType) {
+    errors.push({
+      sheet: 'Angebot',
+      row: 2,
+      field: 'taxType',
+      message: 'taxType ist Pflicht.'
+    });
+  }
+
+  // Kunde
+  const kundeRow = kunde.rows[0] || {};
+  const customerName = kundeRow.name || kundeRow.Name || '';
+
+  if (!customerName) {
+    errors.push({
+      sheet: 'Kunde',
+      row: 2,
+      field: 'name',
+      message: 'Kundenname ist Pflicht.'
+    });
+  }
+
+  const address = {
+    name: customerName,
+    street: kundeRow.street || kundeRow.Straße || '',
+    zip: kundeRow.zip || kundeRow.PLZ || '',
+    city: kundeRow.city || kundeRow.Ort || '',
+    countryCode: kundeRow.countryCode || 'DE'
+  };
+
+  // Positionen
+  const lineItems = [];
+
+  positionen.rows.forEach((row, idx) => {
+
+    const excelRow = idx + 2;
+
+    const type = (row.type || row.Typ || '').toString().trim();
+    const qty = Number(row.qty || row.Menge || 0);
+    const articleId = (row.articleId || row.articleID || '').toString().trim();
+    const priceExcel = row.price || row.Preis || null;
+    const name = (row.name || row.Bezeichnung || '').toString().trim();
+
+    if (!type) {
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'type', message: 'type ist Pflicht.' });
+      return;
+    }
+
+    if (!byType[type]) byType[type] = 0;
+    byType[type]++;
+
+    if (!(qty > 0)) {
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'qty', message: 'qty muss > 0 sein.' });
+      return;
+    }
+
+    let useExcelPrice = false;
+
+    if (!articleId) {
+
+      if (priceExcel == null || priceExcel === '') {
+        errors.push({
+          sheet: 'Positionen',
+          row: excelRow,
+          field: 'price',
+          message: 'Preis ist Pflicht, wenn keine articleId gesetzt ist.'
+        });
+        return;
+      }
+
+      useExcelPrice = true;
+
+    } else {
+
+      if (type === 'material')
+        useExcelPrice = false;
+
+      else if (allowPriceOverride)
+        useExcelPrice = true;
+
+      else
+        useExcelPrice = false;
+    }
+
+    let finalName = name;
+
+    if (!finalName && articleId) {
+      finalName = `(Name aus Artikel ${articleId})`;
+      autoNamedLineItems.push({ row: excelRow, articleId, name: finalName });
+      warnings.push({ row: excelRow, message: `Name automatisch aus Artikel ${articleId}` });
+    }
+
+    lineItems.push({
+      type: 'custom',
+      articleId: articleId || null,
+      name: finalName || `Position ${excelRow}`,
+      quantity: qty,
+      price: useExcelPrice ? Number(priceExcel) : null,
+      meta: {
+        excelRow,
+        sourcePrice: useExcelPrice ? 'excel' : 'article'
+      }
+    });
+  });
+
+  // Wenn Fehler → kein Payload erzeugen
+  if (errors.length) {
+    return {
+      quotationPayload: null,
+      summary: { byType, warnings, errors, autoNamedLineItems }
+    };
+  }
+
+  // Angebots-Payload (Schema ggf. erweitern)
+  const quotationPayload = {
+    voucherDate: new Date().toISOString().substring(0, 10),
+    address,
+    taxType,
+    lineItems,
+    finalized: true
+  };
+
   return {
-    quotationPayload: fakeQuotationPayload,
-    summary
+    quotationPayload,
+    summary: { byType, warnings, errors, autoNamedLineItems }
   };
 }
 
 // ------------------------------------------------------
-// Hilfsfunktion: Lexware/Lexoffice Angebot erstellen
-// ------------------------------------------------------
-//
-// ACHTUNG: Nur EIN API-Call hier drin!
-// Keine Schleifen, keine zusätzlichen Retries – das machen wir oben.
+// Lexoffice Angebot erstellen
 // ------------------------------------------------------
 
-async function createLexofficeQuotationInApi(quotationPayload) {
+async function createLexofficeQuotationInApi(payload) {
+
   if (!LEXOFFICE_API_KEY) {
-    const err = new Error('LEXOFFICE_API_KEY ist nicht gesetzt');
+    const err = new Error('API Key fehlt');
     err.status = 500;
     throw err;
   }
 
-  const url = 'https://api.lexoffice.io/v1/quotations'; // ggf. Lexware-URL anpassen
-
   const res = await callLexwareApi({
     method: 'POST',
-    url,
-    data: quotationPayload,
+    url: 'https://api.lexoffice.io/v1/quotations',
+    data: payload,
     headers: {
       Authorization: `Bearer ${LEXOFFICE_API_KEY}`,
       'Content-Type': 'application/json',
       Accept: 'application/json'
     },
-    validateStatus: () => true // wir behandeln Fehler selbst
+    validateStatus: () => true
   });
 
-  // Rate-Limit
   if (res.status === 429) {
     const err = new Error('Rate limit exceeded');
     err.status = 429;
@@ -230,203 +309,148 @@ async function createLexofficeQuotationInApi(quotationPayload) {
     throw err;
   }
 
-  // Sonstige Fehler
   if (res.status < 200 || res.status >= 300) {
-    const err = new Error('Lexware/Lexoffice Error');
+    const err = new Error('Lexoffice Error');
     err.status = res.status;
     err.raw = res.data;
     throw err;
   }
 
-  return res.data; // sollte u.a. id enthalten
+  return res.data;
 }
 
 // ------------------------------------------------------
-// Endpoint: System-Check / Ping
+// API ROUTES
 // ------------------------------------------------------
 
 app.get('/api/ping', (req, res) => {
-  return res.json({
+  res.json({
     ok: true,
     status: 'OK',
-    message: 'Lexoffice/Lexware Angebots-Tool Backend läuft.',
-    allowPriceOverrideDefault: ALLOW_PRICE_OVERRIDE_DEFAULT,
     passwordProtected: !!TOOL_PASSWORD,
+    allowPriceOverrideDefault: ALLOW_PRICE_OVERRIDE_DEFAULT,
     minIntervalMs: MIN_INTERVAL_MS
   });
 });
 
-// ------------------------------------------------------
-// Endpoint: Testmodus (Excel nur prüfen, nicht in Lexware/Lexoffice schreiben)
-// ------------------------------------------------------
+// ---------------- Testmodus ----------------
 
 app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
-  try {
-    const { excelData, allowPriceOverride: allowPriceOverrideClient } = req.body || {};
 
-    if (!excelData) {
-      return res.status(200).json({
+  try {
+
+    const { excelData, allowPriceOverride } = req.body || {};
+
+    if (!excelData)
+      return res.json({
         ok: false,
         status: 'VALIDATION_ERROR',
-        stage: 'input',
-        message: 'Es wurden keine Excel-Daten übermittelt.',
+        message: 'Excel fehlt',
         httpStatus: 400
       });
-    }
 
-    const allowPriceOverride =
-      typeof allowPriceOverrideClient === 'boolean'
-        ? allowPriceOverrideClient
-        : ALLOW_PRICE_OVERRIDE_DEFAULT;
-
-    const { quotationPayload, summary } = await parseExcelAndBuildQuotationPayload(excelData, {
-      allowPriceOverride,
+    const result = await parseExcelAndBuildQuotationPayload(excelData, {
+      allowPriceOverride: typeof allowPriceOverride === 'boolean'
+        ? allowPriceOverride
+        : ALLOW_PRICE_OVERRIDE_DEFAULT,
       mode: 'test'
     });
 
-    const hasErrors = Array.isArray(summary.errors) && summary.errors.length > 0;
+    const hasErrors = result.summary.errors.length > 0;
 
-    return res.status(200).json({
+    return res.json({
       ok: !hasErrors,
       status: hasErrors ? 'VALIDATION_ERROR' : 'SUCCESS',
       stage: 'test',
-      message: hasErrors
-        ? 'Die Excel-Datei enthält Fehler. Bitte prüfen und korrigieren.'
-        : 'Test erfolgreich. Angebot kann erstellt werden.',
-      httpStatus: 200,
-      data: {
-        summary,
-        allowPriceOverride
-        // optional zur Kontrolle:
-        // quotationPayload
-      }
+      data: result.summary
     });
+
   } catch (err) {
-    console.error('[test-excel] Fehler:', err);
-    return res.status(200).json({
+
+    console.error('[test-excel]', err);
+
+    res.json({
       ok: false,
       status: 'ERROR',
       stage: 'test',
-      message: 'Unerwarteter Fehler beim Testmodus.',
-      httpStatus: err.status || 500,
-      technical: {
-        error: err.message || String(err)
-      }
+      message: err.message,
+      httpStatus: err.status || 500
     });
   }
 });
 
-// ------------------------------------------------------
-// Endpoint: Angebot erstellen & finalisieren
-// ------------------------------------------------------
-//
-// WICHTIG:
-// - Nur EIN Aufruf von createLexofficeQuotationInApi()
-// - Rate-Limit (429) wird sauber als RATE_LIMIT zurückgegeben
-// - Kein automatisches Retry bei POST (kein Risiko für Duplikate)
-// ------------------------------------------------------
+// --------------- Angebot erstellen ---------------
 
 app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
-  try {
-    const { excelData, allowPriceOverride: allowPriceOverrideClient } = req.body || {};
 
-    if (!excelData) {
-      return res.status(200).json({
+  try {
+
+    const { excelData, allowPriceOverride } = req.body || {};
+
+    if (!excelData)
+      return res.json({
         ok: false,
         status: 'VALIDATION_ERROR',
-        stage: 'input',
-        message: 'Es wurden keine Excel-Daten übermittelt.',
+        message: 'Excel fehlt',
         httpStatus: 400
       });
-    }
 
-    const allowPriceOverride =
-      typeof allowPriceOverrideClient === 'boolean'
-        ? allowPriceOverrideClient
-        : ALLOW_PRICE_OVERRIDE_DEFAULT;
+    const { quotationPayload, summary } =
+      await parseExcelAndBuildQuotationPayload(excelData, {
+        allowPriceOverride: typeof allowPriceOverride === 'boolean'
+          ? allowPriceOverride
+          : ALLOW_PRICE_OVERRIDE_DEFAULT,
+        mode: 'create'
+      });
 
-    // 1) Excel prüfen & Lexware/Lexoffice-Payload bauen
-    const { quotationPayload, summary } = await parseExcelAndBuildQuotationPayload(excelData, {
-      allowPriceOverride,
-      mode: 'create'
-    });
-
-    const hasErrors = Array.isArray(summary.errors) && summary.errors.length > 0;
-    if (hasErrors) {
-      return res.status(200).json({
+    if (!quotationPayload)
+      return res.json({
         ok: false,
         status: 'VALIDATION_ERROR',
         stage: 'validation',
-        message: 'Die Excel-Datei enthält Fehler. Angebot wurde nicht erstellt.',
-        httpStatus: 200,
-        data: {
-          summary,
-          allowPriceOverride
-        }
+        message: 'Excel enthält Fehler',
+        data: summary
       });
-    }
 
-    // 2) EINMALIGER Lexware/Lexoffice-Erstellungs-Call
-    const lexRes = await createLexofficeQuotationInApi(quotationPayload);
+    const result = await createLexofficeQuotationInApi(quotationPayload);
 
-    const quotationId = lexRes.id || null;
-
-    return res.status(200).json({
+    return res.json({
       ok: true,
       status: 'SUCCESS',
       stage: 'lexoffice-create',
-      message: 'Angebot erfolgreich in Lexware/Lexoffice erstellt.',
-      httpStatus: 200,
       data: {
-        quotationId,
-        lexofficeResponse: lexRes,
-        summary,
-        allowPriceOverride
+        quotationId: result.id || null,
+        summary
       }
     });
+
   } catch (err) {
-    console.error('[create-offer] Fehler:', err);
 
-    const status = err.status || err.response?.status || 500;
-    const raw = err.raw || err.response?.data || null;
-    const msg = err.message || 'Fehler beim Erstellen des Angebots.';
+    console.error('[create-offer]', err);
 
-    // Spezieller Fall: Rate-Limit 429
-    if (status === 429 || msg === 'Rate limit exceeded') {
-      return res.status(200).json({
+    if (err.status === 429)
+      return res.json({
         ok: false,
         status: 'RATE_LIMIT',
         stage: 'lexoffice-create',
-        message: 'Lexware/Lexoffice-Rate-Limit überschritten.',
-        userMessage:
-          'Lexware/Lexoffice meldet aktuell ein Rate-Limit. Das Angebot konnte nicht erstellt bzw. das PDF nicht geladen werden. ' +
-          'Bitte später erneut versuchen. Deine Excel-Daten sind grundsätzlich in Ordnung.',
-        httpStatus: 429,
-        technical: {
-          raw
-        }
+        message: 'Rate-Limit — später erneut versuchen',
+        httpStatus: 429
       });
-    }
 
-    // Allgemeiner Fehler
-    return res.status(200).json({
+    res.json({
       ok: false,
       status: 'ERROR',
       stage: 'lexoffice-create',
-      message: 'Fehler beim Erstellen des Angebots in Lexware/Lexoffice.',
-      httpStatus: status,
-      technical: {
-        raw
-      }
+      message: err.message,
+      httpStatus: err.status || 500
     });
   }
 });
 
 // ------------------------------------------------------
-// Start Server
-// ------------------------------------------------------
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Lexware/Lexoffice Angebots-Tool Backend läuft auf Port ${PORT}`);
-});
+
+app.listen(PORT, () =>
+  console.log('Backend läuft auf Port', PORT)
+);
