@@ -331,8 +331,9 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     return { quotation: null, summary: { errors, warnings, autoNamed, byType } };
   }
 
+  // WICHTIG: voucherDate jetzt als vollständiger ISO-String (Lexoffice-Fix)
   const quotation = {
-    voucherDate: new Date().toISOString().substring(0, 10),
+    voucherDate: new Date().toISOString(),
     taxType,
     address,
     lineItems,
