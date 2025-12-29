@@ -138,9 +138,6 @@ function logWarningsFromSummary(summary) {
   });
 }
 
-/**
- * Separate Passage: Lexware API
- */
 function logLexwareApi(technical) {
   logLine();
   log('—— Lexware API ——', 'info');
@@ -172,11 +169,8 @@ function logLexwareApi(technical) {
   }
 
   if (technical.raw) {
-    try {
-      log('raw:\n' + JSON.stringify(technical.raw, null, 2), 'info');
-    } catch {
-      log('raw: ' + String(technical.raw), 'info');
-    }
+    try { log('raw:\n' + JSON.stringify(technical.raw, null, 2), 'info'); }
+    catch { log('raw: ' + String(technical.raw), 'info'); }
   }
 }
 
@@ -211,15 +205,11 @@ async function callApi(endpoint) {
     console.log("API Antwort:", data);
 
     if (!data.ok) {
-      const status = data.status || 'UNBEKANNT';
-      const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
-      log(`❌ Fehler (${status}): ${msg}`, "err");
-
+      log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "Unbekannt"}`, "err");
       if (data.data && data.data.summary) {
         logErrorsFromSummary(data.data.summary);
         logWarningsFromSummary(data.data.summary);
       }
-
       logLexwareApi(data.technical || null);
       return;
     }
@@ -232,9 +222,8 @@ async function callApi(endpoint) {
       log("🟢 Test erfolgreich — keine kritischen Fehler. ", "ok");
     }
 
-    if (data.data && data.data.summary) {
-      logWarningsFromSummary(data.data.summary);
-    }
+    if (data.data && data.data.summary) logWarningsFromSummary(data.data.summary);
+
   } catch (e) {
     console.error(e);
     log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
@@ -243,14 +232,60 @@ async function callApi(endpoint) {
   }
 }
 
-// Template Download
-document.getElementById("btnTemplate").onclick = () => {
-  window.location.href = "/templates/lexware_template.xlsx";
-};
-
 // Buttons
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
+
+// ✅ Template Download (dynamisch, mit Passwort-Header; Fallback auf Browser-Download)
+document.getElementById("btnTemplate").onclick = async () => {
+  const password = document.getElementById("password").value;
+
+  try {
+    log("Template wird generiert/geladen (TTL 10 min) …", "info");
+
+    const res = await fetch("/api/template.xlsx", {
+      method: "GET",
+      headers: password ? { "x-tool-password": password } : {}
+    });
+
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const data = await res.json();
+      if (!data.ok) {
+        log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "Template Download fehlgeschlagen"}`, "err");
+        logLexwareApi(data.technical || null);
+        return;
+      }
+    }
+
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const blob = await res.blob();
+
+    let filename = "lexware_template.xlsx";
+    const cd = res.headers.get("content-disposition");
+    if (cd && cd.includes("filename=")) {
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      if (m && m[1]) filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log("✅ Template Download gestartet.", "ok");
+  } catch (e) {
+    console.error(e);
+    // Fallback: Browser-Navigation (hilft bei Basic Auth Prompt)
+    log("⚠️ Download per fetch fehlgeschlagen – Fallback über Browser-Download…", "info");
+    window.location.href = "/api/template.xlsx";
+  }
+};
 
 // ✅ PDF Download (mit Passwort-Header)
 document.getElementById("btnPdf").onclick = async () => {
@@ -269,13 +304,9 @@ document.getElementById("btnPdf").onclick = async () => {
       headers: password ? { "x-tool-password": password } : {}
     });
 
-    // server kann im Fehlerfall JSON liefern
     const ct = (res.headers.get("content-type") || "").toLowerCase();
-
     if (ct.includes("application/json")) {
       const data = await res.json();
-      console.log("PDF API Antwort:", data);
-
       if (!data.ok) {
         log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "PDF Download fehlgeschlagen"}`, "err");
         logLexwareApi(data.technical || null);
@@ -283,10 +314,8 @@ document.getElementById("btnPdf").onclick = async () => {
       }
     }
 
-    // sonst: PDF/Blob
     const blob = await res.blob();
 
-    // Dateiname (falls server Content-Disposition liefert)
     let filename = "angebot.pdf";
     const cd = res.headers.get("content-disposition");
     if (cd && cd.includes("filename=")) {
@@ -321,7 +350,8 @@ fetch("/api/ping")
     }
     sys.textContent =
       "Backend erreichbar — Rate-Limiter: " + (d.minIntervalMs || 0) + " ms — Passwort: " +
-      (d.passwordProtected ? "aktiv" : "aus");
+      (d.passwordProtected ? "aktiv" : "aus") +
+      " — Template TTL: " + Math.round((d.templateTtlMs || 0) / 60000) + " min";
   })
   .catch(() => {
     document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
