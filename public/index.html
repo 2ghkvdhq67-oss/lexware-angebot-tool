@@ -31,7 +31,6 @@ button {
 .ok  { color: green; }
 .err { color: red; }
 .info { color: #444; }
-
 .error-item { margin-left: 10px; font-size: 13px; }
 </style>
 </head>
@@ -100,7 +99,7 @@ function logErrors(summary) {
     const line = [
       e.sheet ? `[${e.sheet}]` : "",
       e.row ? `Zeile ${e.row}` : "",
-      e.field ? `Feld "${e.field}"` : "",
+      e.field ? `Feld \"${e.field}\"` : "",
       "→",
       e.message || ""
     ].filter(Boolean).join(" ");
@@ -108,9 +107,28 @@ function logErrors(summary) {
   });
 }
 
+function logTechnical(technical) {
+  if (!technical) return;
+  if (technical.httpStatus) {
+    log("HTTP-Status: " + technical.httpStatus, "info");
+  }
+  if (technical.raw) {
+    try {
+      const pretty = JSON.stringify(technical.raw, null, 2);
+      log("Lexoffice-Originalantwort:\n" + pretty, "info");
+    } catch {
+      log("Lexoffice-Originalantwort (raw): " + String(technical.raw), "info");
+    }
+  }
+}
+
 async function callApi(endpoint) {
-  const file = document.getElementById("file").files[0];
-  if (!file) return log("Bitte eine Excel-Datei auswählen.", "err");
+  const fileInput = document.getElementById("file");
+  const file = fileInput.files[0];
+  if (!file) {
+    log("Bitte eine Excel-Datei auswählen.", "err");
+    return;
+  }
 
   const excelData = await readFileBase64(file);
   const password = document.getElementById("password").value;
@@ -124,45 +142,57 @@ async function callApi(endpoint) {
       body: JSON.stringify({ excelData, password, allowPriceOverride })
     });
     data = await res.json();
-  } catch {
-    return log("❌ Serverfehler / Netzwerkfehler", "err");
-  }
-
-  if (!data.ok) {
-    log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message}`, "err");
-    logErrors(data?.data?.summary);
+  } catch (e) {
+    console.error(e);
+    log("❌ Serverfehler / Netzwerkfehler", "err");
     return;
   }
 
-  if (data?.data?.quotationId) {
+  console.log("API Antwort:", data);
+
+  if (!data.ok) {
+    const status = data.status || "UNBEKANNT";
+    const msg = data.message || "Keine genaue Fehlermeldung vorhanden.";
+    log(`❌ Fehler (${status}): ${msg}`, "err");
+    logErrors(data?.data?.summary);
+    logTechnical(data.technical);
+    return;
+  }
+
+  if (data.data && data.data.quotationId) {
     log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
   } else {
     log("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
   }
 }
 
-// Buttons
+// Buttons verbinden
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
-// Template-Download (GitHub-Ordner /templates)
+// Template-Download: Datei liegt in /templates/Lexware_Template.xlsx
 document.getElementById("btnTemplate").onclick = () => {
-  window.location.href = "/templates/lexware_template.xlsx";
+  window.location.href = "/templates/Lexware_Template.xlsx";
 };
 
-// Systemstatus
+// Systemstatus prüfen
 fetch("/api/ping")
   .then(r => r.json())
-  .then(d =>
-    document.getElementById("sys").textContent =
+  .then(d => {
+    const sys = document.getElementById("sys");
+    if (!d.ok) {
+      sys.textContent = "Backend antwortet, aber ok=false.";
+      return;
+    }
+    sys.textContent =
       "Backend erreichbar — Rate-Limiter: " +
       d.minIntervalMs +
       " ms — Passwort: " +
-      (d.passwordProtected ? "aktiv" : "aus")
-  )
-  .catch(() =>
-    document.getElementById("sys").textContent = "❌ Backend nicht erreichbar."
-  );
+      (d.passwordProtected ? "aktiv" : "aus");
+  })
+  .catch(() => {
+    document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
+  });
 </script>
 
 </body>
