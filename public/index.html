@@ -2,34 +2,26 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
-<title>Maiershirts – Lexoffice Angebots-Tool</title>
+<title>Maiershirts — Lexoffice Angebots-Tool</title>
 
 <style>
-  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; }
-  h2 { margin-bottom: 10px; }
+body { font-family: Arial; padding: 24px; }
+h2 { margin-bottom: 8px; }
 
-  .box {
-    border: 1px solid #ddd;
-    padding: 12px;
-    margin-bottom: 12px;
-    border-radius: 6px;
-  }
+.box {
+  border: 1px solid #ddd;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
 
-  button {
-    padding: 8px 14px;
-    margin-right: 10px;
-    cursor: pointer;
-  }
+button { padding: 8px 12px; margin-right: 8px; }
 
-  #log {
-    white-space: pre-wrap;
-    font-family: monospace;
-    margin-top: 10px;
-  }
+#log { white-space: pre-wrap; font-family: monospace; }
 
-  .ok { color: green; }
-  .err { color: red; }
-  .info { color: #444; }
+.ok { color: green; }
+.err { color: red; }
+.info { color: #444; }
 </style>
 </head>
 
@@ -38,41 +30,38 @@
 <h2>Maiershirts — Lexoffice Angebots-Tool</h2>
 
 <div class="box">
-  <label>Tool-Passwort (falls aktiviert):</label><br>
-  <input id="password" type="password" />
+  <label>Tool-Passwort:</label><br>
+  <input id="password" type="password">
 </div>
 
 <div class="box">
   <label>Excel Datei:</label><br>
-  <input id="file" type="file" accept=".xlsx" />
+  <input id="file" type="file" accept=".xlsx">
 </div>
 
 <div class="box">
   <label>
-    <input type="checkbox" id="override" />
+    <input type="checkbox" id="override">
     Artikelpreis überschreiben erlauben
   </label>
 </div>
 
 <div class="box">
-  <button onclick="runTest()">Testmodus ausführen</button>
-  <button onclick="runOffer()">Angebot erstellen</button>
+  <button id="btnTest">Testmodus ausführen</button>
+  <button id="btnOffer">Angebot erstellen</button>
+  <button id="btnPdf">PDF herunterladen</button>
 </div>
 
 <div class="box">
-  <strong>Systemstatus:</strong>
-  <div id="sys" class="info">Noch nicht geprüft…</div>
+  <strong>Systemstatus:</strong><br>
+  <div id="sys" class="info">Wird geprüft…</div>
 </div>
 
 <div class="box">
-  <strong>Protokoll:</strong>
+  <strong>Protokoll:</strong><br>
   <div id="log"></div>
 </div>
 
-
-<!-- ---------------------------------------------------
-     JAVASCRIPT DIREKT HIER – KEINE main.js NÖTIG
----------------------------------------------------- -->
 <script>
 async function readFileBase64(file) {
   return new Promise(resolve => {
@@ -84,11 +73,13 @@ async function readFileBase64(file) {
 
 function log(msg, cls="") {
   const el = document.getElementById("log");
-  el.innerHTML = '<div class="'+cls+'">'+msg+'</div>' + el.innerHTML;
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = msg;
+  el.prepend(div);
 }
 
 async function callApi(endpoint) {
-
   const file = document.getElementById("file").files[0];
   if (!file) return log("Bitte Excel auswählen", "err");
 
@@ -99,60 +90,42 @@ async function callApi(endpoint) {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      password,
-      excelData,
-      allowPriceOverride
-    })
+    body: JSON.stringify({ excelData, password, allowPriceOverride })
   });
 
   const data = await res.json();
-  console.log("Antwort", data);
 
   if (!data.ok) {
-
-    if (data.status === "RATE_LIMIT")
-      return log("⚠️ Rate-Limit — Bitte später erneut versuchen", "err");
-
-    return log("❌ Fehler: " + (data.message || "Unbekannter Fehler"), "err");
+    if (data.status === "RATE_LIMIT") {
+      return log("⚠️ Rate-Limit — später erneut versuchen", "err");
+    }
+    return log("❌ Fehler: " + (data.message || "Unbekannt"), "err");
   }
 
-  if (data?.data?.quotationId)
+  if (data?.data?.quotationId) {
     return log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
+  }
 
-  log("🟢 Test erfolgreich — keine Blocking-Fehler", "ok");
+  log("🟢 Test erfolgreich — keine Fehler", "ok");
 }
 
-function runTest()  { callApi("/api/test-excel"); }
-function runOffer() { callApi("/api/create-offer"); }
+document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
+document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
+// Placeholder — Backend-PDF kommt später optional
+document.getElementById("btnPdf").onclick = () =>
+  log("📄 PDF-Download folgt (Endpoint kann ergänzt werden)", "info");
 
-// ---------------------------------------------
-// Backend-Status prüfen (Ping)
-// ---------------------------------------------
-async function checkSystem() {
-  try {
-    const r = await fetch("/api/ping");
-    const d = await r.json();
-
-    if (d.ok)
-      document.getElementById("sys").innerText =
-        "Backend erreichbar — Rate-Limiter aktiv (" +
-        d.minIntervalMs + "ms)";
-
-    else
-      document.getElementById("sys").innerText =
-        "Backend antwortet, aber ok=false";
-  }
-  catch(e) {
-    document.getElementById("sys").innerText =
-      "❌ Backend nicht erreichbar";
-  }
-}
-
-checkSystem();
+// Systemstatus
+fetch("/api/ping")
+ .then(r => r.json())
+ .then(d => {
+   document.getElementById("sys").textContent =
+     "Backend erreichbar — Rate-Limiter " +
+     d.minIntervalMs + "ms — Passwort: " +
+     (d.passwordProtected ? "aktiv" : "aus");
+ });
 </script>
 
 </body>
 </html>
-
