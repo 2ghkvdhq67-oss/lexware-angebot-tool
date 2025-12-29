@@ -3,14 +3,15 @@
 /**
  * Maiershirts — Lexoffice Angebots-Tool Backend
  * --------------------------------------------
- * Funktionen:
- *  - Passwortschutz (TOOL_PASSWORD, optional)
- *  - Testmodus / Validierung (/api/test-excel)
- *  - Angebot erstellen (/api/create-offer)
- *  - Preis-Override-Schalter (ALLOW_PRICE_OVERRIDE, Checkbox)
- *  - Rate-Limiter (LEXWARE_MIN_INTERVAL_MS, Standard 600ms)
- *  - Detaillierte Fehlermeldungen (errors mit Sheet/Row/Field)
- *  - Liefert Frontend aus /public
+ * - Frontend aus /public
+ * - Passwortschutz (TOOL_PASSWORD, optional)
+ * - Testmodus (/api/test-excel)
+ * - Angebot erstellen (/api/create-offer)
+ * - Preis-Override-Schalter (ALLOW_PRICE_OVERRIDE)
+ * - Rate-Limiter (LEXWARE_MIN_INTERVAL_MS, Standard 600ms)
+ * - Unterstützt Excel-Columns wie im Screenshot:
+ *   pos, type, articleId, name, description, quantity, unitName,
+ *   unitPriceAmount, taxRatePercentage, discountPercent
  */
 
 const path = require('path');
@@ -25,7 +26,7 @@ dotenv.config();
 const app = express();
 app.use(bodyParser.json({ limit: '10mb' }));
 
-// Frontend aus /public ausliefern (index.html, CSS, JS, …)
+// Frontend aus /public
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ----------------------------------------------------
@@ -38,26 +39,27 @@ const ALLOW_PRICE_OVERRIDE_DEFAULT =
   (process.env.ALLOW_PRICE_OVERRIDE || 'false').toLowerCase() === 'true';
 const MIN_INTERVAL_MS = parseInt(process.env.LEXWARE_MIN_INTERVAL_MS || '600', 10);
 
-console.log('[INFO] Rate-Limiter aktiv mit', MIN_INTERVAL_MS, 'ms Abstand');
+console.log('[INFO] Rate-Limiter:', MIN_INTERVAL_MS, 'ms');
 
 // ----------------------------------------------------
 // Rate Limiter
 // ----------------------------------------------------
 
-let lastCall = 0;
+let lastCallTs = 0;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function callLexoffice(config) {
-  const diff = Date.now() - lastCall;
+  const now = Date.now();
+  const diff = now - lastCallTs;
   if (diff < MIN_INTERVAL_MS) {
     await sleep(MIN_INTERVAL_MS - diff);
   }
 
   const res = await axios(config);
-  lastCall = Date.now();
+  lastCallTs = Date.now();
   return res;
 }
 
@@ -78,7 +80,7 @@ function passwordMiddleware(req, res, next) {
       ok: false,
       stage: 'auth',
       status: 'UNAUTHORIZED',
-      message: 'Passwort ungültig oder fehlt'
+      message: 'Passwort ungültig oder fehlt.'
     });
   }
 
@@ -86,7 +88,7 @@ function passwordMiddleware(req, res, next) {
 }
 
 // ----------------------------------------------------
-// Excel Parser & Validierung
+// Excel Parsing & Validierung
 // ----------------------------------------------------
 
 async function parseExcel(excelData, options = {}) {
@@ -94,7 +96,6 @@ async function parseExcel(excelData, options = {}) {
 
   let workbook;
 
-  // excelData kann Base64 oder Buffer sein
   if (typeof excelData === 'string') {
     const buf = Buffer.from(excelData, 'base64');
     workbook = XLSX.read(buf, { type: 'buffer' });
@@ -126,26 +127,27 @@ async function parseExcel(excelData, options = {}) {
   if (!positionen) errors.push({ sheet: 'Positionen', message: 'Sheet „Positionen“ fehlt.' });
 
   if (errors.length) {
-    return {
-      quotation: null,
-      summary: { errors, warnings, autoNamed, byType }
-    };
+    return { quotation: null, summary: { errors, warnings, autoNamed, byType } };
   }
 
-  // Angebot
+  // ---------------- Angebot ----------------
   const angebotRow = angebot[0] || {};
-  const taxType = angebotRow.taxType || angebotRow.TAXTYPE || angebotRow.tax || '';
+  const taxType =
+    angebotRow.taxType ||
+    angebotRow.TAXTYPE ||
+    angebotRow.tax ||
+    ''; // z.B. "net" oder "gross"
 
   if (!taxType) {
     errors.push({
       sheet: 'Angebot',
       row: 2,
       field: 'taxType',
-      message: 'taxType ist Pflicht (z. B. „gross“ oder „net“).'
+      message: 'taxType ist Pflicht (z. B. „net“ oder „gross“).'
     });
   }
 
-  // Kunde
+  // ---------------- Kunde ----------------
   const kundeRow = kunde[0] || {};
   const customerName = kundeRow.name || kundeRow.Name || '';
 
@@ -166,34 +168,54 @@ async function parseExcel(excelData, options = {}) {
     countryCode: kundeRow.countryCode || 'DE'
   };
 
-  // Positionen
+  // ---------------- Positionen ----------------
   const lineItems = [];
 
   positionen.forEach((row, idx) => {
-    const excelRow = idx + 2;
+    const excelRow = idx + 2; // erste Datenzeile ist Excel-Zeile 2
 
-    const type = (row.type || row.Typ || '').toString().trim();
-    const qty = Number(row.qty || row.Menge || 0);
+    const type = (row.type || '').toString().trim(); // custom / text / material
     const articleId = (row.articleId || row.articleID || '').toString().trim();
-    const priceExcel = row.price || row.Preis || null;
-    const name = (row.name || row.Bezeichnung || '').toString().trim();
+    const name = (row.name || '').toString().trim();
+    const description = (row.description || '').toString().trim();
 
+    // WICHTIG: quantity aus mehreren möglichen Spalten lesen
+    const qtyRaw =
+      row.quantity ??
+      row.qty ??
+      row.Qty ??
+      row.Menge ??
+      row.menge ??
+      0;
+    const qty = Number(qtyRaw);
+
+    const unitName = (row.unitName || row.unit || '').toString().trim();
+
+    // Preis aus `unitPriceAmount` ODER `price` / `Preis`
+    const unitPriceRaw =
+      row.unitPriceAmount ??
+      row.price ??
+      row.Preis ??
+      null;
+    const priceExcel = unitPriceRaw !== '' && unitPriceRaw !== null
+      ? Number(unitPriceRaw)
+      : null;
+
+    const taxRate = row.taxRatePercentage ?? row.taxRate ?? null;
+    const discountPercent = row.discountPercent ?? row.discount ?? null;
+
+    // Leere Zeile komplett überspringen
+    const hasAnyValue =
+      type || articleId || name || description || qtyRaw || unitPriceRaw;
+    if (!hasAnyValue) return;
+
+    // Typ prüfen
     if (!type) {
       errors.push({
         sheet: 'Positionen',
         row: excelRow,
         field: 'type',
-        message: 'type ist Pflicht (z. B. „material“ oder „service“).'
-      });
-      return;
-    }
-
-    if (!(qty > 0)) {
-      errors.push({
-        sheet: 'Positionen',
-        row: excelRow,
-        field: 'qty',
-        message: 'qty muss größer als 0 sein.'
+        message: 'type ist Pflicht (z. B. „custom“, „text“, „material“).'
       });
       return;
     }
@@ -201,57 +223,91 @@ async function parseExcel(excelData, options = {}) {
     if (!byType[type]) byType[type] = 0;
     byType[type]++;
 
-    let usePrice = false;
+    // Sonderfall: text-Position
+    if (type === 'text') {
+      // Für Textzeilen ist qty optional, kein Preis nötig
+      lineItems.push({
+        type: 'text',
+        name: name || description || `Textzeile ${excelRow}`,
+        description: description || null,
+        quantity: null,
+        unitName: null,
+        price: null,
+        taxRate,
+        discountPercent
+      });
+      return;
+    }
+
+    // Für alle anderen Typen ist qty > 0 Pflicht
+    if (!(qty > 0)) {
+      errors.push({
+        sheet: 'Positionen',
+        row: excelRow,
+        field: 'qty',
+        message: 'quantity / qty muss größer als 0 sein.'
+      });
+      return;
+    }
+
+    let useExcelPrice = false;
 
     if (!articleId) {
-      if (!priceExcel && priceExcel !== 0) {
+      // Keine articleId → Preis MUSS aus Excel kommen
+      if (priceExcel === null || Number.isNaN(priceExcel)) {
         errors.push({
           sheet: 'Positionen',
           row: excelRow,
           field: 'price',
-          message: 'Preis ist Pflicht, wenn keine articleId gesetzt ist.'
+          message: 'Preis (unitPriceAmount / price) ist Pflicht, wenn keine articleId gesetzt ist.'
         });
         return;
       }
-      usePrice = true;
+      useExcelPrice = true;
+
     } else {
+      // Es gibt eine articleId
       if (type === 'material') {
-        usePrice = false; // Preis kommt aus Lexoffice-Artikel
+        // Material: Preis immer aus Artikelstamm
+        useExcelPrice = false;
       } else if (allowPriceOverride) {
-        usePrice = true;  // Excel-Preis darf überschreiben
+        // Override erlaubt: Excel-Preis darf überschreiben
+        useExcelPrice = priceExcel !== null && !Number.isNaN(priceExcel);
       } else {
-        usePrice = false; // Standard: Preis aus Lexoffice
+        // Standard: Preis aus Lexoffice
+        useExcelPrice = false;
       }
     }
 
     let finalName = name;
-
     if (!finalName && articleId) {
       finalName = `(Artikel ${articleId})`;
       autoNamed.push({ row: excelRow, articleId, name: finalName });
       warnings.push({
+        sheet: 'Positionen',
         row: excelRow,
-        message: `Name war leer und wurde aus Artikel ${articleId} ergänzt (Platzhalter).`
+        message: `Name war leer und wurde aus Artikel ${articleId} (Platzhalter) ergänzt.`
       });
     }
 
     lineItems.push({
-      type: 'custom',
+      type: type === 'material' ? 'material' : 'custom',
       articleId: articleId || null,
       name: finalName || `Position ${excelRow}`,
+      description: description || null,
       quantity: qty,
-      price: usePrice ? Number(priceExcel) : null
-      // Preis aus Artikelstamm wird später in Lexoffice gezogen
+      unitName: unitName || null,
+      price: useExcelPrice ? priceExcel : null,
+      taxRate,
+      discountPercent
     });
   });
 
   if (errors.length) {
-    return {
-      quotation: null,
-      summary: { errors, warnings, autoNamed, byType }
-    };
+    return { quotation: null, summary: { errors, warnings, autoNamed, byType } };
   }
 
+  // Minimal-Quotation für Lexoffice (die API errechnet Preise/Steuern anhand Artikel)
   const quotation = {
     voucherDate: new Date().toISOString().substring(0, 10),
     taxType,
@@ -260,10 +316,7 @@ async function parseExcel(excelData, options = {}) {
     finalized: true
   };
 
-  return {
-    quotation,
-    summary: { errors, warnings, autoNamed, byType }
-  };
+  return { quotation, summary: { errors, warnings, autoNamed, byType } };
 }
 
 // ----------------------------------------------------
