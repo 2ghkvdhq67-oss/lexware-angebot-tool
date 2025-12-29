@@ -1,14 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
 <meta charset="utf-8" />
-<title>Lexoffice Angebots-Tool</title>
+<title>Maiershirts – Lexoffice Angebots-Tool</title>
+
 <style>
-  body { font-family: Arial; padding: 20px; }
-  .box { padding: 12px; border: 1px solid #ddd; margin-bottom: 12px; }
-  #log { white-space: pre-wrap; font-family: monospace; }
+  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; }
+  h2 { margin-bottom: 10px; }
+
+  .box {
+    border: 1px solid #ddd;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+  }
+
+  button {
+    padding: 8px 14px;
+    margin-right: 10px;
+    cursor: pointer;
+  }
+
+  #log {
+    white-space: pre-wrap;
+    font-family: monospace;
+    margin-top: 10px;
+  }
+
   .ok { color: green; }
   .err { color: red; }
+  .info { color: #444; }
 </style>
 </head>
 
@@ -22,7 +43,7 @@
 </div>
 
 <div class="box">
-  <label>Excel Upload:</label><br>
+  <label>Excel Datei:</label><br>
   <input id="file" type="file" accept=".xlsx" />
 </div>
 
@@ -34,12 +55,104 @@
 </div>
 
 <div class="box">
-  <button onclick="testExcel()">Testmodus ausführen</button>
-  <button onclick="createOffer()">Angebot erstellen</button>
+  <button onclick="runTest()">Testmodus ausführen</button>
+  <button onclick="runOffer()">Angebot erstellen</button>
 </div>
 
-<div class="box" id="log"></div>
+<div class="box">
+  <strong>Systemstatus:</strong>
+  <div id="sys" class="info">Noch nicht geprüft…</div>
+</div>
 
-<script src="main.js"></script>
+<div class="box">
+  <strong>Protokoll:</strong>
+  <div id="log"></div>
+</div>
+
+
+<!-- ---------------------------------------------------
+     JAVASCRIPT DIREKT HIER – KEINE main.js NÖTIG
+---------------------------------------------------- -->
+<script>
+async function readFileBase64(file) {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
+    r.readAsDataURL(file);
+  });
+}
+
+function log(msg, cls="") {
+  const el = document.getElementById("log");
+  el.innerHTML = '<div class="'+cls+'">'+msg+'</div>' + el.innerHTML;
+}
+
+async function callApi(endpoint) {
+
+  const file = document.getElementById("file").files[0];
+  if (!file) return log("Bitte Excel auswählen", "err");
+
+  const excelData = await readFileBase64(file);
+  const password = document.getElementById("password").value;
+  const allowPriceOverride = document.getElementById("override").checked;
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      password,
+      excelData,
+      allowPriceOverride
+    })
+  });
+
+  const data = await res.json();
+  console.log("Antwort", data);
+
+  if (!data.ok) {
+
+    if (data.status === "RATE_LIMIT")
+      return log("⚠️ Rate-Limit — Bitte später erneut versuchen", "err");
+
+    return log("❌ Fehler: " + (data.message || "Unbekannter Fehler"), "err");
+  }
+
+  if (data?.data?.quotationId)
+    return log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
+
+  log("🟢 Test erfolgreich — keine Blocking-Fehler", "ok");
+}
+
+function runTest()  { callApi("/api/test-excel"); }
+function runOffer() { callApi("/api/create-offer"); }
+
+
+// ---------------------------------------------
+// Backend-Status prüfen (Ping)
+// ---------------------------------------------
+async function checkSystem() {
+  try {
+    const r = await fetch("/api/ping");
+    const d = await r.json();
+
+    if (d.ok)
+      document.getElementById("sys").innerText =
+        "Backend erreichbar — Rate-Limiter aktiv (" +
+        d.minIntervalMs + "ms)";
+
+    else
+      document.getElementById("sys").innerText =
+        "Backend antwortet, aber ok=false";
+  }
+  catch(e) {
+    document.getElementById("sys").innerText =
+      "❌ Backend nicht erreichbar";
+  }
+}
+
+checkSystem();
+</script>
+
 </body>
 </html>
+
