@@ -5,23 +5,37 @@
 <title>Maiershirts — Lexoffice Angebots-Tool</title>
 
 <style>
-body { font-family: Arial; padding: 24px; }
-h2 { margin-bottom: 8px; }
+body { font-family: Arial, sans-serif; padding: 24px; }
+h2 { margin-bottom: 10px; }
 
 .box {
   border: 1px solid #ddd;
-  padding: 12px;
   border-radius: 6px;
+  padding: 12px;
   margin-bottom: 12px;
 }
 
-button { padding: 8px 12px; margin-right: 8px; }
+button {
+  padding: 8px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+}
 
-#log { white-space: pre-wrap; font-family: monospace; }
+#log {
+  white-space: pre-wrap;
+  font-family: monospace;
+  max-height: 300px;
+  overflow-y: auto;
+}
 
-.ok { color: green; }
+.ok  { color: green; }
 .err { color: red; }
 .info { color: #444; }
+
+.error-item {
+  margin-left: 10px;
+  font-size: 13px;
+}
 </style>
 </head>
 
@@ -31,17 +45,17 @@ button { padding: 8px 12px; margin-right: 8px; }
 
 <div class="box">
   <label>Tool-Passwort:</label><br>
-  <input id="password" type="password">
+  <input id="password" type="password" />
 </div>
 
 <div class="box">
-  <label>Excel Datei:</label><br>
-  <input id="file" type="file" accept=".xlsx">
+  <label>Excel-Datei (.xlsx):</label><br>
+  <input id="file" type="file" accept=".xlsx" />
 </div>
 
 <div class="box">
   <label>
-    <input type="checkbox" id="override">
+    <input id="override" type="checkbox" />
     Artikelpreis überschreiben erlauben
   </label>
 </div>
@@ -49,7 +63,6 @@ button { padding: 8px 12px; margin-right: 8px; }
 <div class="box">
   <button id="btnTest">Testmodus ausführen</button>
   <button id="btnOffer">Angebot erstellen</button>
-  <button id="btnPdf">PDF herunterladen</button>
 </div>
 
 <div class="box">
@@ -71,7 +84,7 @@ async function readFileBase64(file) {
   });
 }
 
-function log(msg, cls="") {
+function log(msg, cls = "") {
   const el = document.getElementById("log");
   const div = document.createElement("div");
   if (cls) div.className = cls;
@@ -79,52 +92,107 @@ function log(msg, cls="") {
   el.prepend(div);
 }
 
-async function callApi(endpoint) {
-  const file = document.getElementById("file").files[0];
-  if (!file) return log("Bitte Excel auswählen", "err");
+function logErrorsFromSummary(summary) {
+  if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
 
-  const excelData = await readFileBase64(file);
+  log('Details zu den Fehlern:', 'info');
+  summary.errors.forEach(err => {
+    const line = [
+      err.sheet ? `[${err.sheet}]` : '',
+      err.row ? `Zeile ${err.row}` : '',
+      err.field ? `Feld "${err.field}"` : '',
+      '→',
+      err.message || ''
+    ].filter(Boolean).join(' ');
+    log('  - ' + line, 'error-item');
+  });
+}
+
+async function callApi(endpoint) {
+  const fileInput = document.getElementById("file");
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ excelData, password, allowPriceOverride })
-  });
+  if (!fileInput.files[0]) {
+    log("Bitte zuerst eine Excel-Datei auswählen.", "err");
+    return;
+  }
 
-  const data = await res.json();
+  const excelData = await readFileBase64(fileInput.files[0]);
+
+  let data;
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excelData, password, allowPriceOverride })
+    });
+
+    data = await res.json();
+  } catch (e) {
+    console.error(e);
+    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
+    return;
+  }
+
+  console.log("API Antwort:", data);
 
   if (!data.ok) {
-    if (data.status === "RATE_LIMIT") {
-      return log("⚠️ Rate-Limit — später erneut versuchen", "err");
+    const status = data.status || 'UNBEKANNT';
+    const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
+
+    log(`❌ Fehler (${status}): ${msg}`, "err");
+
+    // Detail-Fehler aus dem Summary-Objekt ausgeben
+    if (data.data && data.data.summary) {
+      logErrorsFromSummary(data.data.summary);
     }
-    return log("❌ Fehler: " + (data.message || "Unbekannt"), "err");
+
+    return;
   }
 
-  if (data?.data?.quotationId) {
-    return log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
+  // Erfolgsfall
+  if (data.data && data.data.quotationId) {
+    log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
+  } else {
+    log("🟢 Test erfolgreich — keine kritischen Fehler. ", "ok");
   }
 
-  log("🟢 Test erfolgreich — keine Fehler", "ok");
+  // Optional: Warnungen anzeigen
+  if (data.data && data.data.summary && Array.isArray(data.data.summary.warnings) && data.data.summary.warnings.length) {
+    log("Hinweise / Warnungen:", "info");
+    data.data.summary.warnings.forEach(w => {
+      const line = [
+        w.sheet ? `[${w.sheet}]` : '',
+        w.row ? `Zeile ${w.row}` : '',
+        w.message || ''
+      ].filter(Boolean).join(' ');
+      log('  - ' + line, 'error-item');
+    });
+  }
 }
 
+// Buttons verbinden
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
-// Placeholder — Backend-PDF kommt später optional
-document.getElementById("btnPdf").onclick = () =>
-  log("📄 PDF-Download folgt (Endpoint kann ergänzt werden)", "info");
-
-// Systemstatus
+// Systemstatus prüfen
 fetch("/api/ping")
- .then(r => r.json())
- .then(d => {
-   document.getElementById("sys").textContent =
-     "Backend erreichbar — Rate-Limiter " +
-     d.minIntervalMs + "ms — Passwort: " +
-     (d.passwordProtected ? "aktiv" : "aus");
- });
+  .then(r => r.json())
+  .then(d => {
+    const sys = document.getElementById("sys");
+    if (!d.ok) {
+      sys.textContent = "Backend antwortet, aber ok=false.";
+      return;
+    }
+    sys.textContent =
+      "Backend erreichbar — Rate-Limiter: " + d.minIntervalMs + " ms — Passwort: " +
+      (d.passwordProtected ? "aktiv" : "aus");
+  })
+  .catch(() => {
+    document.getElementById("sys").textContent =
+      "❌ Backend nicht erreichbar.";
+  });
 </script>
 
 </body>
