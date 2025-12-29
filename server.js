@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Maiershirts — Lexoffice / Lexware Angebots-Tool Backend
- * ------------------------------------------------------
+ * Maiershirts — Lexoffice Angebots-Tool Backend
+ * --------------------------------------------
  * Features:
  *  - Passwortschutz (optional via TOOL_PASSWORD)
  *  - Schalter: allowPriceOverride
@@ -10,9 +10,11 @@
  *  - Angebot erstellen & finalisieren
  *  - Zentraler Rate-Limiter (mind. 600ms Abstand)
  *  - Saubere 429-Behandlung (RATE_LIMIT → kein Retry)
- *  - Excel-Upload (Base64 oder Buffer)
+ *  - Excel-Upload (Base64)
+ *  - Static-Serving von /public (index.html als Startseite)
  */
 
+const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -23,6 +25,9 @@ dotenv.config();
 
 const app = express();
 app.use(bodyParser.json({ limit: '10mb' }));
+
+// Statische Dateien (Frontend) ausliefern: ./public
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ------------------------------------------------------
 // ENV Konfiguration
@@ -52,7 +57,6 @@ function sleep(ms) {
 }
 
 async function callLexwareApi(axiosConfig) {
-
   const now = Date.now();
   const elapsed = now - lastLexwareCallTime;
 
@@ -61,7 +65,6 @@ async function callLexwareApi(axiosConfig) {
   }
 
   const res = await axios(axiosConfig);
-
   lastLexwareCallTime = Date.now();
   return res;
 }
@@ -71,9 +74,7 @@ async function callLexwareApi(axiosConfig) {
 // ------------------------------------------------------
 
 function passwordMiddleware(req, res, next) {
-
-  if (!TOOL_PASSWORD)
-    return next();
+  if (!TOOL_PASSWORD) return next();
 
   const provided =
     req.headers['x-tool-password'] ||
@@ -97,7 +98,6 @@ function passwordMiddleware(req, res, next) {
 // ------------------------------------------------------
 
 async function parseExcelAndBuildQuotationPayload(excelData, options) {
-
   const { allowPriceOverride, mode } = options || {};
 
   // Excel einlesen
@@ -184,7 +184,6 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
   const lineItems = [];
 
   positionen.rows.forEach((row, idx) => {
-
     const excelRow = idx + 2;
 
     const type = (row.type || row.Typ || '').toString().trim();
@@ -209,7 +208,6 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
     let useExcelPrice = false;
 
     if (!articleId) {
-
       if (priceExcel == null || priceExcel === '') {
         errors.push({
           sheet: 'Positionen',
@@ -223,13 +221,10 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
       useExcelPrice = true;
 
     } else {
-
       if (type === 'material')
         useExcelPrice = false;
-
       else if (allowPriceOverride)
         useExcelPrice = true;
-
       else
         useExcelPrice = false;
     }
@@ -243,7 +238,7 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
     }
 
     lineItems.push({
-      type: 'custom',
+      type: 'custom',           // ggf. an Lexoffice-Schema anpassen
       articleId: articleId || null,
       name: finalName || `Position ${excelRow}`,
       quantity: qty,
@@ -255,7 +250,6 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
     });
   });
 
-  // Wenn Fehler → kein Payload erzeugen
   if (errors.length) {
     return {
       quotationPayload: null,
@@ -263,7 +257,6 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
     };
   }
 
-  // Angebots-Payload (Schema ggf. erweitern)
   const quotationPayload = {
     voucherDate: new Date().toISOString().substring(0, 10),
     address,
@@ -283,7 +276,6 @@ async function parseExcelAndBuildQuotationPayload(excelData, options) {
 // ------------------------------------------------------
 
 async function createLexofficeQuotationInApi(payload) {
-
   if (!LEXOFFICE_API_KEY) {
     const err = new Error('API Key fehlt');
     err.status = 500;
@@ -333,12 +325,9 @@ app.get('/api/ping', (req, res) => {
   });
 });
 
-// ---------------- Testmodus ----------------
-
+// Testmodus
 app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
-
   try {
-
     const { excelData, allowPriceOverride } = req.body || {};
 
     if (!excelData)
@@ -366,7 +355,6 @@ app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
     });
 
   } catch (err) {
-
     console.error('[test-excel]', err);
 
     res.json({
@@ -379,12 +367,9 @@ app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
   }
 });
 
-// --------------- Angebot erstellen ---------------
-
+// Angebot erstellen
 app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
-
   try {
-
     const { excelData, allowPriceOverride } = req.body || {};
 
     if (!excelData)
@@ -425,7 +410,6 @@ app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
     });
 
   } catch (err) {
-
     console.error('[create-offer]', err);
 
     if (err.status === 429)
@@ -447,7 +431,10 @@ app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
   }
 });
 
-// ------------------------------------------------------
+// Root: index.html ausliefern
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 
