@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
-<title>Maiershirts — Lexware Angebots-Tool</title>
+<title>Maiershirts — Lexoffice Angebots-Tool</title>
 
 <style>
 body { font-family: Arial, sans-serif; padding: 24px; }
@@ -41,14 +41,14 @@ button[disabled] { opacity: .6; cursor: not-allowed; }
 
 <body>
 
-<h2>Maiershirts — Lexware Angebots-Tool</h2>
+<h2>Maiershirts — Lexoffice Angebots-Tool</h2>
 
 <div class="box">
   <button id="btnTemplate">Excel-Template herunterladen</button>
 </div>
 
 <div class="box">
-  <label>Tool-Passwort (falls aktiviert):</label><br>
+  <label>Tool-Passwort:</label><br>
   <input id="password" type="password" />
 </div>
 
@@ -61,13 +61,6 @@ button[disabled] { opacity: .6; cursor: not-allowed; }
   <label>
     <input id="override" type="checkbox" />
     Artikelpreis überschreiben erlauben
-  </label>
-</div>
-
-<div class="box">
-  <label>
-    <input id="finalize" type="checkbox" checked />
-    Angebot finalisieren (open)
   </label>
 </div>
 
@@ -107,7 +100,7 @@ function log(msg, cls = "") {
   el.prepend(div);
 }
 
-function logLine(msg) {
+function logLine() {
   const el = document.getElementById("log");
   const div = document.createElement("div");
   div.className = "hr";
@@ -146,8 +139,7 @@ function logWarningsFromSummary(summary) {
 }
 
 /**
- * SEPARATE PASSAGE: "Lexware API"
- * => zeigt IMMER httpStatus + raw + details (falls vorhanden)
+ * Separate Passage: Lexware API
  */
 function logLexwareApi(technical) {
   logLine();
@@ -198,7 +190,6 @@ async function callApi(endpoint) {
   const fileInput = document.getElementById("file");
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
-  const finalize = document.getElementById("finalize").checked;
 
   if (!fileInput.files[0]) {
     log("Bitte zuerst eine Excel-Datei auswählen.", "err");
@@ -213,7 +204,7 @@ async function callApi(endpoint) {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ excelData, password, allowPriceOverride, finalize })
+      body: JSON.stringify({ excelData, password, allowPriceOverride })
     });
 
     const data = await res.json();
@@ -229,12 +220,10 @@ async function callApi(endpoint) {
         logWarningsFromSummary(data.data.summary);
       }
 
-      // garantiert separate Lexware API Passage
-      logLexwareApi(data.technical || data?.data?.technical || null);
+      logLexwareApi(data.technical || null);
       return;
     }
 
-    // Erfolgsfall
     if (data.data && data.data.quotationId) {
       lastQuotationId = data.data.quotationId;
       log("✅ Angebot erstellt — ID: " + lastQuotationId, "ok");
@@ -246,7 +235,6 @@ async function callApi(endpoint) {
     if (data.data && data.data.summary) {
       logWarningsFromSummary(data.data.summary);
     }
-
   } catch (e) {
     console.error(e);
     log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
@@ -255,26 +243,71 @@ async function callApi(endpoint) {
   }
 }
 
+// Template Download
+document.getElementById("btnTemplate").onclick = () => {
+  window.location.href = "/templates/lexware_template.xlsx";
+};
+
 // Buttons
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
-document.getElementById("btnTemplate").onclick = () => {
-  // stabiler Alias
-  window.location.href = "/templates/lexware_template.xlsx";
-};
-
-// PDF Button (wie vorher, nur deaktiviert bis quotationId bekannt)
+// ✅ PDF Download (mit Passwort-Header)
 document.getElementById("btnPdf").onclick = async () => {
   if (!lastQuotationId) {
     log("Bitte zuerst ein Angebot erstellen, dann PDF laden.", "err");
     return;
   }
 
-  // Öffnet Download in neuem Tab (Binary)
-  const url = "/api/download-pdf?id=" + encodeURIComponent(lastQuotationId);
-  const w = window.open(url, "_blank");
-  if (!w) log("Popup blockiert? Bitte Popups erlauben oder Link manuell öffnen: " + url, "err");
+  const password = document.getElementById("password").value;
+
+  try {
+    log("PDF wird geladen …", "info");
+
+    const res = await fetch("/api/download-pdf?id=" + encodeURIComponent(lastQuotationId), {
+      method: "GET",
+      headers: password ? { "x-tool-password": password } : {}
+    });
+
+    // server kann im Fehlerfall JSON liefern
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+    if (ct.includes("application/json")) {
+      const data = await res.json();
+      console.log("PDF API Antwort:", data);
+
+      if (!data.ok) {
+        log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "PDF Download fehlgeschlagen"}`, "err");
+        logLexwareApi(data.technical || null);
+        return;
+      }
+    }
+
+    // sonst: PDF/Blob
+    const blob = await res.blob();
+
+    // Dateiname (falls server Content-Disposition liefert)
+    let filename = "angebot.pdf";
+    const cd = res.headers.get("content-disposition");
+    if (cd && cd.includes("filename=")) {
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      if (m && m[1]) filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log("✅ PDF Download gestartet.", "ok");
+  } catch (e) {
+    console.error(e);
+    log("❌ PDF Download fehlgeschlagen (Netzwerk/Browser).", "err");
+  }
 };
 
 // Ping
@@ -288,7 +321,7 @@ fetch("/api/ping")
     }
     sys.textContent =
       "Backend erreichbar — Rate-Limiter: " + (d.minIntervalMs || 0) + " ms — Passwort: " +
-      (d.passwordProtected ? ("aktiv (" + d.passwordMode + ")") : "aus");
+      (d.passwordProtected ? "aktiv" : "aus");
   })
   .catch(() => {
     document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
