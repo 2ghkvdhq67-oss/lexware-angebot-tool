@@ -32,15 +32,18 @@ const FINALIZE_DEFAULT = (process.env.FINALIZE_DEFAULT || 'true').toLowerCase() 
 // optional extra buffer interval in ms (zusätzlich zum TokenBucket)
 const MIN_INTERVAL_MS = Number(process.env.LEXWARE_MIN_INTERVAL_MS || '0');
 
+// TTL für dynamisches Template: 10 Minuten
+const TEMPLATE_TTL_MS = 10 * 60 * 1000;
+
 // ------------------------------------------------------------
-// Static: public + templates
+// Static: public + templates (statisch bleibt erhalten!)
 // ------------------------------------------------------------
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/templates', express.static(path.join(__dirname, 'templates')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-// Stabiler Alias: /templates/lexware_template.xlsx
+// Stabiler Alias: /templates/lexware_template.xlsx (statisch)
 app.get('/templates/lexware_template.xlsx', (req, res) => {
   const templatesDir = path.join(__dirname, 'templates');
   const preferred = [
@@ -119,7 +122,7 @@ function fail(res, payload) {
 }
 
 // ------------------------------------------------------------
-// Auth: Basic Auth optional ODER TOOL_PASSWORD im Body
+// Auth: Basic Auth optional ODER TOOL_PASSWORD im Body/Query/Header
 // ------------------------------------------------------------
 function parseBasicAuth(header) {
   if (!header || !header.startsWith('Basic ')) return null;
@@ -144,8 +147,15 @@ function basicAuthMiddleware(req, res, next) {
 
 function toolPasswordMiddleware(req, res, next) {
   if (!TOOL_PASSWORD) return next();
-  const supplied = req.body?.password || req.query?.password || req.headers['x-tool-password'];
+
+  // wichtig: GET Downloads können kein Body-Passwort schicken -> Header/Query erlaubt
+  const supplied =
+    req.body?.password ||
+    req.query?.password ||
+    req.headers['x-tool-password'];
+
   if (supplied === TOOL_PASSWORD) return next();
+
   return fail(res, {
     stage: 'auth',
     status: 'UNAUTHORIZED',
@@ -296,7 +306,7 @@ const articleCache = {
   byId: new Map(),
   list: null,
   fetchedAt: 0,
-  ttlMs: 10 * 60 * 1000
+  ttlMs: TEMPLATE_TTL_MS // 10 Minuten
 };
 
 async function getArticleById(articleId) {
@@ -349,7 +359,7 @@ async function listAllArticlesCached() {
 }
 
 // ------------------------------------------------------------
-// UnitPrice builder (AUTO – damit Lexware nicht 406 "unit price null" liefert)
+// UnitPrice builder (AUTO)
 // ------------------------------------------------------------
 function buildUnitPriceFromNetGross({ net, gross, taxRate }) {
   const tr = Number(taxRate ?? 19);
@@ -487,7 +497,6 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       continue;
     }
 
-    // Artikel holen (wenn articleId vorhanden) – damit wir Name+Preis automatisch setzen können
     let articleObj = null;
     if (articleId) {
       articleObj = await getArticleById(articleId);
@@ -522,13 +531,11 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       unitName
     };
 
-    // material/service: id muss gesetzt sein
     if (articleId && (type === 'material' || type === 'service')) {
       item.id = articleId;
     }
 
-    // --- AUTO unitPrice: immer setzen (Excel oder Artikel) ---
-    // 1) Excel-Preis verwenden, wenn erlaubt
+    // --- AUTO unitPrice ---
     const canUseExcelPrice =
       unitPriceAmount !== null &&
       !(type === 'material' || type === 'service') &&
@@ -543,7 +550,6 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       }
       item.unitPrice = up;
     } else {
-      // 2) Fallback auf Artikelpreis (wenn articleId vorhanden)
       if (articleId) {
         const up = buildUnitPriceFromArticle(articleObj);
         if (!up) {
@@ -565,7 +571,6 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
           });
         }
       } else {
-        // 3) Kein articleId -> Excel Preis ist Pflicht
         if (unitPriceAmount === null) {
           errors.push({
             sheet: 'Positionen',
@@ -587,7 +592,6 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
     if (discountPercent !== null) item.discountPercentage = discountPercent;
 
-    // final check
     if (!item.unitPrice) {
       errors.push({ sheet: 'Positionen', row: excelRow, field: 'unitPrice', message: 'unitPrice fehlt (würde Lexware 406 auslösen).' });
       continue;
@@ -640,6 +644,95 @@ function hashRequest({ excelData, allowPriceOverride, finalize }) {
 }
 
 // ------------------------------------------------------------
+// ✅ Dynamisches Template (10 Minuten TTL)
+// ------------------------------------------------------------
+const templateCache = {
+  buffer: null,
+  createdAt: 0
+};
+
+function buildTemplateWorkbook(articles) {
+  const wb = XLSX.utils.book_new();
+
+  // 1) Artikel-Lookup
+  const rows = (articles || []).map(a => ({
+    id: a.id || '',
+    title: a.title || '',
+    articleNumber: a.articleNumber || '',
+    type: a.type || '',
+    unitName: a.unitName || '',
+    netPrice: a.price?.netPrice ?? '',
+    grossPrice: a.price?.grossPrice ?? '',
+    leadingPrice: a.price?.leadingPrice ?? '',
+    taxRate: a.price?.taxRate ?? '',
+    archived: a.archived ?? '',
+    version: a.version ?? ''
+  }));
+  const shArticles = XLSX.utils.json_to_sheet(rows, {
+    header: ['id','title','articleNumber','type','unitName','netPrice','grossPrice','leadingPrice','taxRate','archived','version']
+  });
+  XLSX.utils.book_append_sheet(wb, shArticles, 'Artikel-Lookup');
+
+  // 2) Angebot (Key/Value)
+  const angebot = [
+    { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht Lexware taxConditions.taxType)' }
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(angebot), 'Angebot');
+
+  // 3) Kunde (Key/Value)
+  const kunde = [
+    { Feld: 'kind', Wert: 'company', Hinweis: 'company oder person' },
+    { Feld: 'name', Wert: '', Hinweis: 'Pflicht: Firmenname (company) oder Vollname (person)' },
+    { Feld: 'email', Wert: '', Hinweis: 'Optional, aber hilfreich fürs Matching' },
+    { Feld: 'contactPerson', Wert: '', Hinweis: 'Optional' },
+    { Feld: 'street', Wert: '', Hinweis: 'Optional' },
+    { Feld: 'zip', Wert: '', Hinweis: 'Optional' },
+    { Feld: 'city', Wert: '', Hinweis: 'Optional' },
+    { Feld: 'countryCode', Wert: 'DE', Hinweis: 'ISO 3166-1 alpha-2, z.B. DE' },
+    { Feld: 'phone', Wert: '', Hinweis: 'Optional' },
+    { Feld: 'contactId', Wert: '', Hinweis: 'Optional: Lexware Contact ID, wenn du sie kennst' }
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kunde), 'Kunde');
+
+  // 4) Positionen (tabellarisch)
+  const posHeader = [
+    'pos','type','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
+  ];
+  const posExample = [
+    {
+      pos: 1, type: 'custom', articleId: '', name: 'DTF Druck Brust 10×8 cm',
+      description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk',
+      unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
+    },
+    {
+      pos: 2, type: 'text', articleId: '', name: 'Lieferzeit / Hinweis',
+      description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '',
+      unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
+    },
+    {
+      pos: 3, type: 'material', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
+      description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '',
+      taxRatePercentage: '', discountPercent: ''
+    }
+  ];
+  const shPos = XLSX.utils.json_to_sheet(posExample, { header: posHeader });
+  XLSX.utils.book_append_sheet(wb, shPos, 'Positionen');
+
+  // 5) Anleitung
+  const help = [
+    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren' },
+    { Schritt: 2, Hinweis: 'Angebot: taxType setzen (net/gross)' },
+    { Schritt: 3, Hinweis: 'Kunde: name ist Pflicht' },
+    { Schritt: 4, Hinweis: 'Positionen: type + quantity > 0 + unitName Pflicht (außer text)' },
+    { Schritt: 5, Hinweis: 'material/service: articleId Pflicht, Preis wird automatisch aus Artikelstamm gesetzt' },
+    { Schritt: 6, Hinweis: 'custom ohne articleId: unitPriceAmount Pflicht' }
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(help), 'Anleitung');
+
+  return wb;
+}
+
+// ------------------------------------------------------------
 // API
 // ------------------------------------------------------------
 app.get('/api/ping', (req, res) => {
@@ -650,7 +743,8 @@ app.get('/api/ping', (req, res) => {
     allowPriceOverrideDefault: ALLOW_PRICE_OVERRIDE_DEFAULT,
     minIntervalMs: MIN_INTERVAL_MS,
     apiBaseUrl: API_BASE_URL,
-    finalizeDefault: FINALIZE_DEFAULT
+    finalizeDefault: FINALIZE_DEFAULT,
+    templateTtlMs: TEMPLATE_TTL_MS
   });
 });
 
@@ -672,6 +766,47 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
       status: 'ERROR',
       message: err.message,
       technical: buildTechnical({ httpStatus: 500, raw: { message: 'ARTICLES_EXCEPTION' }, err })
+    });
+  }
+});
+
+// ✅ Dynamisches Template (auth + TTL 10min)
+app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
+  try {
+    if (!API_KEY) {
+      return res.status(200).json({
+        ok: false,
+        stage: 'template',
+        status: 'CONFIG_ERROR',
+        message: 'API Key fehlt.',
+        technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
+      });
+    }
+
+    const now = Date.now();
+    if (templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
+      return res.status(200).send(templateCache.buffer);
+    }
+
+    const articles = await listAllArticlesCached(); // hat selbst TTL 10min
+    const wb = buildTemplateWorkbook(articles);
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    templateCache.buffer = buffer;
+    templateCache.createdAt = now;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
+    return res.status(200).send(buffer);
+  } catch (err) {
+    return res.status(200).json({
+      ok: false,
+      stage: 'template',
+      status: 'ERROR',
+      message: err.message,
+      technical: buildTechnical({ httpStatus: 500, raw: { message: 'TEMPLATE_EXCEPTION' }, err })
     });
   }
 });
