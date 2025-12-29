@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
-<title>Maiershirts — Lexoffice Angebots-Tool</title>
+<title>Maiershirts — Lexware Angebots-Tool</title>
 
 <style>
 body { font-family: Arial, sans-serif; padding: 24px; }
@@ -21,30 +21,34 @@ button {
   cursor: pointer;
 }
 
+button[disabled] { opacity: .6; cursor: not-allowed; }
+
 #log {
   white-space: pre-wrap;
   font-family: monospace;
-  max-height: 300px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
 .ok  { color: green; }
 .err { color: red; }
 .info { color: #444; }
+
 .error-item { margin-left: 10px; font-size: 13px; }
+.hr { border-top: 1px dashed #ccc; margin: 8px 0; }
 </style>
 </head>
 
 <body>
 
-<h2>Maiershirts — Lexoffice Angebots-Tool</h2>
+<h2>Maiershirts — Lexware Angebots-Tool</h2>
 
 <div class="box">
   <button id="btnTemplate">Excel-Template herunterladen</button>
 </div>
 
 <div class="box">
-  <label>Tool-Passwort:</label><br>
+  <label>Tool-Passwort (falls aktiviert):</label><br>
   <input id="password" type="password" />
 </div>
 
@@ -61,8 +65,16 @@ button {
 </div>
 
 <div class="box">
+  <label>
+    <input id="finalize" type="checkbox" checked />
+    Angebot finalisieren (open)
+  </label>
+</div>
+
+<div class="box">
   <button id="btnTest">Testmodus ausführen</button>
   <button id="btnOffer">Angebot erstellen</button>
+  <button id="btnPdf" disabled>PDF herunterladen</button>
 </div>
 
 <div class="box">
@@ -76,6 +88,9 @@ button {
 </div>
 
 <script>
+let busy = false;
+let lastQuotationId = null;
+
 async function readFileBase64(file) {
   return new Promise(resolve => {
     const r = new FileReader();
@@ -86,96 +101,183 @@ async function readFileBase64(file) {
 
 function log(msg, cls = "") {
   const el = document.getElementById("log");
-  const d = document.createElement("div");
-  if (cls) d.className = cls;
-  d.textContent = msg;
-  el.prepend(d);
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = msg;
+  el.prepend(div);
 }
 
-function logErrors(summary) {
-  if (!summary?.errors?.length) return;
-  log("Details zu den Fehlern:", "info");
-  summary.errors.forEach(e => {
+function logLine(msg) {
+  const el = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = "hr";
+  el.prepend(div);
+}
+
+function logErrorsFromSummary(summary) {
+  if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
+
+  log('Details zu den Fehlern:', 'info');
+  summary.errors.forEach(err => {
     const line = [
-      e.sheet ? `[${e.sheet}]` : "",
-      e.row ? `Zeile ${e.row}` : "",
-      e.field ? `Feld \"${e.field}\"` : "",
-      "→",
-      e.message || ""
-    ].filter(Boolean).join(" ");
-    log("  - " + line, "error-item");
+      err.sheet ? `[${err.sheet}]` : '',
+      err.row ? `Zeile ${err.row}` : '',
+      err.field ? `Feld "${err.field}"` : '',
+      '→',
+      err.message || ''
+    ].filter(Boolean).join(' ');
+    log('  - ' + line, 'error-item');
   });
 }
 
-function logTechnical(technical) {
-  if (!technical) return;
-  if (technical.httpStatus) {
-    log("HTTP-Status: " + technical.httpStatus, "info");
+function logWarningsFromSummary(summary) {
+  if (!summary || !Array.isArray(summary.warnings) || !summary.warnings.length) return;
+
+  log('Hinweise / Warnungen:', 'info');
+  summary.warnings.forEach(w => {
+    const line = [
+      w.sheet ? `[${w.sheet}]` : '',
+      w.row ? `Zeile ${w.row}` : '',
+      '→',
+      w.message || ''
+    ].filter(Boolean).join(' ');
+    log('  - ' + line, 'error-item');
+  });
+}
+
+/**
+ * SEPARATE PASSAGE: "Lexware API"
+ * => zeigt IMMER httpStatus + raw + details (falls vorhanden)
+ */
+function logLexwareApi(technical) {
+  logLine();
+  log('—— Lexware API ——', 'info');
+
+  if (!technical) {
+    log('Keine technical-Daten vorhanden (technical ist leer).', 'err');
+    return;
   }
+
+  if (technical.httpStatus) log('HTTP-Status: ' + technical.httpStatus, 'info');
+
+  const meta = technical.meta || {};
+  if (meta.requestId) log('requestId: ' + meta.requestId, 'info');
+  if (meta.traceId) log('traceId: ' + meta.traceId, 'info');
+  if (meta.path) log('path: ' + meta.path, 'info');
+  if (meta.timestamp) log('timestamp: ' + meta.timestamp, 'info');
+  if (meta.message) log('message: ' + meta.message, 'info');
+
+  if (Array.isArray(meta.details) && meta.details.length) {
+    log('details:', 'info');
+    meta.details.forEach(d => {
+      const line = [
+        d.field ? d.field : '',
+        d.violation ? `(${d.violation})` : '',
+        d.message ? '→ ' + d.message : ''
+      ].filter(Boolean).join(' ');
+      log('  - ' + line, 'error-item');
+    });
+  }
+
   if (technical.raw) {
     try {
-      const pretty = JSON.stringify(technical.raw, null, 2);
-      log("Lexoffice-Originalantwort:\n" + pretty, "info");
+      log('raw:\n' + JSON.stringify(technical.raw, null, 2), 'info');
     } catch {
-      log("Lexoffice-Originalantwort (raw): " + String(technical.raw), "info");
+      log('raw: ' + String(technical.raw), 'info');
     }
   }
 }
 
+function setBusy(v) {
+  busy = v;
+  document.getElementById("btnTest").disabled = v;
+  document.getElementById("btnOffer").disabled = v;
+}
+
 async function callApi(endpoint) {
   const fileInput = document.getElementById("file");
-  const file = fileInput.files[0];
-  if (!file) {
-    log("Bitte eine Excel-Datei auswählen.", "err");
-    return;
-  }
-
-  const excelData = await readFileBase64(file);
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
+  const finalize = document.getElementById("finalize").checked;
 
-  let data;
+  if (!fileInput.files[0]) {
+    log("Bitte zuerst eine Excel-Datei auswählen.", "err");
+    return;
+  }
+  if (busy) return;
+
+  setBusy(true);
   try {
+    const excelData = await readFileBase64(fileInput.files[0]);
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ excelData, password, allowPriceOverride })
+      body: JSON.stringify({ excelData, password, allowPriceOverride, finalize })
     });
-    data = await res.json();
+
+    const data = await res.json();
+    console.log("API Antwort:", data);
+
+    if (!data.ok) {
+      const status = data.status || 'UNBEKANNT';
+      const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
+      log(`❌ Fehler (${status}): ${msg}`, "err");
+
+      if (data.data && data.data.summary) {
+        logErrorsFromSummary(data.data.summary);
+        logWarningsFromSummary(data.data.summary);
+      }
+
+      // garantiert separate Lexware API Passage
+      logLexwareApi(data.technical || data?.data?.technical || null);
+      return;
+    }
+
+    // Erfolgsfall
+    if (data.data && data.data.quotationId) {
+      lastQuotationId = data.data.quotationId;
+      log("✅ Angebot erstellt — ID: " + lastQuotationId, "ok");
+      document.getElementById("btnPdf").disabled = false;
+    } else {
+      log("🟢 Test erfolgreich — keine kritischen Fehler. ", "ok");
+    }
+
+    if (data.data && data.data.summary) {
+      logWarningsFromSummary(data.data.summary);
+    }
+
   } catch (e) {
     console.error(e);
-    log("❌ Serverfehler / Netzwerkfehler", "err");
-    return;
-  }
-
-  console.log("API Antwort:", data);
-
-  if (!data.ok) {
-    const status = data.status || "UNBEKANNT";
-    const msg = data.message || "Keine genaue Fehlermeldung vorhanden.";
-    log(`❌ Fehler (${status}): ${msg}`, "err");
-    logErrors(data?.data?.summary);
-    logTechnical(data.technical);
-    return;
-  }
-
-  if (data.data && data.data.quotationId) {
-    log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
-  } else {
-    log("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
+    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
+  } finally {
+    setBusy(false);
   }
 }
 
-// Buttons verbinden
+// Buttons
 document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
 document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
 
-// Template-Download: Datei liegt in /templates/Lexware_Template.xlsx
 document.getElementById("btnTemplate").onclick = () => {
-  window.location.href = "/templates/Lexware_Template.xlsx";
+  // stabiler Alias
+  window.location.href = "/templates/lexware_template.xlsx";
 };
 
-// Systemstatus prüfen
+// PDF Button (wie vorher, nur deaktiviert bis quotationId bekannt)
+document.getElementById("btnPdf").onclick = async () => {
+  if (!lastQuotationId) {
+    log("Bitte zuerst ein Angebot erstellen, dann PDF laden.", "err");
+    return;
+  }
+
+  // Öffnet Download in neuem Tab (Binary)
+  const url = "/api/download-pdf?id=" + encodeURIComponent(lastQuotationId);
+  const w = window.open(url, "_blank");
+  if (!w) log("Popup blockiert? Bitte Popups erlauben oder Link manuell öffnen: " + url, "err");
+};
+
+// Ping
 fetch("/api/ping")
   .then(r => r.json())
   .then(d => {
@@ -185,10 +287,8 @@ fetch("/api/ping")
       return;
     }
     sys.textContent =
-      "Backend erreichbar — Rate-Limiter: " +
-      d.minIntervalMs +
-      " ms — Passwort: " +
-      (d.passwordProtected ? "aktiv" : "aus");
+      "Backend erreichbar — Rate-Limiter: " + (d.minIntervalMs || 0) + " ms — Passwort: " +
+      (d.passwordProtected ? ("aktiv (" + d.passwordMode + ")") : "aus");
   })
   .catch(() => {
     document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
