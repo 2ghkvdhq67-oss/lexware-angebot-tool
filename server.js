@@ -16,14 +16,14 @@ app.use(bodyParser.json({ limit: '10mb' }));
 // Static assets
 // ----------------------------------------------------
 
-// Frontend
+// Frontend aus /public (index.html, CSS, JS …)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Templates (GitHub-Ordner)
+// Templates-Ordner explizit freigeben (Variante B)
 app.use('/templates', express.static(path.join(__dirname, 'templates')));
 
 // ----------------------------------------------------
-// ENV
+// ENV Variablen
 // ----------------------------------------------------
 
 const LEXOFFICE_API_KEY = process.env.LEXOFFICE_API_KEY || '';
@@ -35,7 +35,7 @@ const MIN_INTERVAL_MS = parseInt(process.env.LEXWARE_MIN_INTERVAL_MS || '600', 1
 console.log('[INFO] Rate-Limiter:', MIN_INTERVAL_MS, 'ms');
 
 // ----------------------------------------------------
-// Rate limiter
+// Rate Limiter
 // ----------------------------------------------------
 
 let lastCallTs = 0;
@@ -47,13 +47,14 @@ async function callLexoffice(config) {
   if (diff < MIN_INTERVAL_MS) {
     await sleep(MIN_INTERVAL_MS - diff);
   }
+
   const res = await axios(config);
   lastCallTs = Date.now();
   return res;
 }
 
 // ----------------------------------------------------
-// Password middleware
+// Passwort-Middleware
 // ----------------------------------------------------
 
 function passwordMiddleware(req, res, next) {
@@ -77,7 +78,7 @@ function passwordMiddleware(req, res, next) {
 }
 
 // ----------------------------------------------------
-// Helper: vertical sheets (Feld / Wert / Hinweis)
+// Helper: vertikales Sheet (Feld / Wert / Hinweis)
 // ----------------------------------------------------
 
 function sheetRowsToKeyValueObject(rows) {
@@ -87,10 +88,10 @@ function sheetRowsToKeyValueObject(rows) {
   const fieldKeys = ['Feld', 'feld', 'Field', 'field'];
   const valueKeys = ['Wert', 'wert', 'Value', 'value', 'val'];
 
-  let fieldCol = fieldKeys.find(k => k in first);
+  const fieldCol = fieldKeys.find(k => k in first);
   if (!fieldCol) return null;
 
-  let valueCol = valueKeys.find(k => k in first);
+  const valueCol = valueKeys.find(k => k in first);
   if (!valueCol) return null;
 
   const obj = {};
@@ -104,10 +105,16 @@ function sheetRowsToKeyValueObject(rows) {
 }
 
 // ----------------------------------------------------
-// Excel parser + validation
+// Excel-Parser & Validierung
 // ----------------------------------------------------
 
 async function parseExcel(excelData, { allowPriceOverride }) {
+  if (!excelData) {
+    const e = new Error('Keine Excel-Daten übergeben.');
+    e.status = 400;
+    throw e;
+  }
+
   let workbook;
 
   if (typeof excelData === 'string') {
@@ -120,8 +127,8 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     throw e;
   }
 
-  const readSheet = n => {
-    const sh = workbook.Sheets[n];
+  const readSheet = name => {
+    const sh = workbook.Sheets[name];
     return sh ? XLSX.utils.sheet_to_json(sh, { defval: '' }) : null;
   };
 
@@ -134,6 +141,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
   const autoNamed = [];
   const byType = {};
 
+  // Pflicht-Sheets
   if (!angebotRows) errors.push({ sheet: 'Angebot', message: 'Sheet „Angebot“ fehlt.' });
   if (!kundeRows) errors.push({ sheet: 'Kunde', message: 'Sheet „Kunde“ fehlt.' });
   if (!positions) errors.push({ sheet: 'Positionen', message: 'Sheet „Positionen“ fehlt.' });
@@ -142,7 +150,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     return { quotation: null, summary: { errors, warnings, autoNamed, byType } };
   }
 
-  // Angebot (horizontal ODER vertikal)
+  // -------- Angebot: horizontal ODER vertikal --------
   let angebot = sheetRowsToKeyValueObject(angebotRows) || angebotRows[0] || {};
   const taxType =
     angebot.taxType ||
@@ -160,7 +168,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     });
   }
 
-  // Kunde (horizontal ODER vertikal)
+  // -------- Kunde: horizontal ODER vertikal --------
   let kunde = sheetRowsToKeyValueObject(kundeRows) || kundeRows[0] || {};
 
   const customerName =
@@ -189,13 +197,13 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     contactPerson: kunde.contactPerson || ''
   };
 
-  // Positionen
+  // -------- Positionen --------
   const lineItems = [];
 
-  positions.forEach((row, i) => {
-    const excelRow = i + 2;
+  positions.forEach((row, idx) => {
+    const excelRow = idx + 2; // erste Datenzeile
 
-    const type = (row.type || '').toString().trim();
+    const type = (row.type || '').toString().trim();      // custom / text / material
     const articleId = (row.articleId || row.articleID || '').toString().trim();
     const name = (row.name || '').toString().trim();
     const description = (row.description || '').toString().trim();
@@ -241,7 +249,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     if (!byType[type]) byType[type] = 0;
     byType[type]++;
 
-    // text-Zeile → keine Menge nötig
+    // text-Position → keine Menge nötig
     if (type === 'text') {
       lineItems.push({
         type: 'text',
@@ -256,7 +264,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
       return;
     }
 
-    // andere Typen → qty > 0
+    // alle anderen Typen → qty > 0
     if (!(qty > 0)) {
       errors.push({
         sheet: 'Positionen',
@@ -270,6 +278,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
     let useExcelPrice = false;
 
     if (!articleId) {
+      // keine articleId → Preis MUSS aus Excel kommen
       if (priceExcel === null || Number.isNaN(priceExcel)) {
         errors.push({
           sheet: 'Positionen',
@@ -281,11 +290,15 @@ async function parseExcel(excelData, { allowPriceOverride }) {
       }
       useExcelPrice = true;
     } else {
+      // articleId vorhanden
       if (type === 'material') {
+        // Material → immer Preis aus Artikelstamm
         useExcelPrice = false;
       } else if (allowPriceOverride) {
+        // Override erlaubt → Excel-Preis darf überschreiben (wenn vorhanden)
         useExcelPrice = priceExcel != null && !Number.isNaN(priceExcel);
       } else {
+        // sonst Preis aus Lexoffice
         useExcelPrice = false;
       }
     }
@@ -330,7 +343,7 @@ async function parseExcel(excelData, { allowPriceOverride }) {
 }
 
 // ----------------------------------------------------
-// Lexoffice request
+// Lexoffice-Anfrage
 // ----------------------------------------------------
 
 async function createQuotation(payload) {
@@ -355,6 +368,7 @@ async function createQuotation(payload) {
   if (res.status === 429) {
     const e = new Error('Rate limit exceeded');
     e.status = 429;
+    e.raw = res.data;
     throw e;
   }
 
@@ -369,7 +383,7 @@ async function createQuotation(payload) {
 }
 
 // ----------------------------------------------------
-// API routes
+// API-Routen
 // ----------------------------------------------------
 
 app.get('/api/ping', (req, res) => {
@@ -384,6 +398,16 @@ app.get('/api/ping', (req, res) => {
 app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
   try {
     const { excelData, allowPriceOverride } = req.body || {};
+
+    if (!excelData) {
+      return res.json({
+        ok: false,
+        stage: 'input',
+        status: 'VALIDATION_ERROR',
+        message: 'Es wurden keine Excel-Daten übergeben.',
+        data: { summary: { errors: [], warnings: [], autoNamed: [], byType: {} } }
+      });
+    }
 
     const parsed = await parseExcel(excelData, {
       allowPriceOverride:
@@ -403,13 +427,13 @@ app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
         : 'Test erfolgreich.',
       data: { summary: parsed.summary }
     });
-
   } catch (err) {
     res.json({
       ok: false,
       stage: 'test',
       status: 'ERROR',
-      message: err.message
+      message: err.message,
+      technical: { status: err.status || null }
     });
   }
 });
@@ -417,6 +441,16 @@ app.post('/api/test-excel', passwordMiddleware, async (req, res) => {
 app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
   try {
     const { excelData, allowPriceOverride } = req.body || {};
+
+    if (!excelData) {
+      return res.json({
+        ok: false,
+        stage: 'input',
+        status: 'VALIDATION_ERROR',
+        message: 'Es wurden keine Excel-Daten übergeben.',
+        data: { summary: { errors: [], warnings: [], autoNamed: [], byType: {} } }
+      });
+    }
 
     const parsed = await parseExcel(excelData, {
       allowPriceOverride:
@@ -447,13 +481,16 @@ app.post('/api/create-offer', passwordMiddleware, async (req, res) => {
         summary: parsed.summary
       }
     });
-
   } catch (err) {
     res.json({
       ok: false,
       stage: 'lexoffice-create',
       status: err.status === 429 ? 'RATE_LIMIT' : 'ERROR',
-      message: err.message
+      message: err.message,
+      technical: {
+        httpStatus: err.status || null,
+        raw: err.raw || null
+      }
     });
   }
 });
