@@ -2,309 +2,360 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
-<title>Maiershirts — Lexware Angebots-Tool</title>
+<title>Maiershirts — Lexoffice Angebots-Tool</title>
+
 <style>
-body { font-family: Arial, sans-serif; padding: 24px; max-width: 1100px; margin: 0 auto; }
+body { font-family: Arial, sans-serif; padding: 24px; }
 h2 { margin-bottom: 10px; }
-.box { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
-.row { display: flex; gap: 12px; flex-wrap: wrap; }
-.col { flex: 1 1 420px; }
-button { padding: 8px 12px; margin-right: 8px; cursor: pointer; }
+
+.box {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+button {
+  padding: 8px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
 button[disabled] { opacity: .6; cursor: not-allowed; }
-textarea { width: 100%; min-height: 140px; padding: 10px; }
-#log { white-space: pre-wrap; font-family: ui-monospace, Menlo, Consolas, monospace; max-height: 420px; overflow-y: auto; background: #0b0b0b; color: #eaeaea; padding: 10px; border-radius: 6px; }
-.ok{color:#39d353;} .err{color:#ff6b6b;} .info{color:#c9d1d9;} .muted{color:#9aa4ad;}
-.error-item { margin-left: 10px; font-size: 13px; color: #ffb4b4; }
-.hr { border-top: 1px dashed rgba(255,255,255,.25); margin: 8px 0; }
-.small { font-size: 12px; color: #555; }
+
+#log {
+  white-space: pre-wrap;
+  font-family: monospace;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ok  { color: green; }
+.err { color: red; }
+.info { color: #444; }
+
+.error-item { margin-left: 10px; font-size: 13px; }
+.hr { border-top: 1px dashed #ccc; margin: 8px 0; }
 </style>
 </head>
+
 <body>
 
-<h2>Maiershirts — Lexware Angebots-Tool</h2>
+<h2>Maiershirts — Lexoffice Angebots-Tool</h2>
 
-<div class="row">
-  <div class="col">
-    <div class="box">
-      <button id="btnTemplate">Excel-Template herunterladen</button>
-      <div class="small">Dynamisch: <code>/api/template.xlsx</code> (Artikel-Lookup max. alle 10 Minuten aktualisiert)</div>
-    </div>
+<div class="box">
+  <button id="btnTemplate">Excel-Template herunterladen</button>
+</div>
 
-    <div class="box">
-      <label>Tool-Passwort:</label><br>
-      <input id="password" type="password" />
-      <div class="small">Wird für Downloads per Header <code>x-tool-password</code> mitgesendet.</div>
-    </div>
+<div class="box">
+  <label>Tool-Passwort:</label><br>
+  <input id="password" type="password" />
+</div>
 
-    <div class="box">
-      <label>Excel-Datei (.xlsx):</label><br>
-      <input id="file" type="file" accept=".xlsx" />
-    </div>
+<div class="box">
+  <label>Excel-Datei (.xlsx):</label><br>
+  <input id="file" type="file" accept=".xlsx" />
+</div>
 
-    <div class="box">
-      <label><input id="override" type="checkbox" /> Artikelpreis überschreiben erlauben</label>
-      <label style="margin-left:12px;"><input id="finalizeFlag" type="checkbox" /> Beim Erstellen finalisieren</label>
-      <div class="small">Finalisieren geht per API nur beim Erstellen (nicht nachträglich).</div>
-    </div>
+<div class="box">
+  <label>
+    <input id="override" type="checkbox" />
+    Artikelpreis überschreiben erlauben
+  </label>
+</div>
 
-    <div class="box">
-      <button id="btnTest">Testmodus ausführen</button>
-      <button id="btnOffer">Angebot erstellen</button>
-      <button id="btnFinalize">Angebot finalisieren</button>
-      <button id="btnPdf" disabled>PDF herunterladen</button>
-    </div>
+<div class="box">
+  <button id="btnTest">Testmodus ausführen</button>
+  <button id="btnOffer">Angebot erstellen</button>
+  <button id="btnPdf" disabled>PDF herunterladen</button>
+</div>
 
-    <div class="box">
-      <strong>Phase 1 Komfort: Text einfügen</strong><br>
-      <div class="small">Text aus Kundenanfrage/Lieferschein hier reinkopieren (Zeilen/Tabs ok).</div>
-      <textarea id="paste" placeholder="Beispiel:
-25 Stk DTF Druck Brust 10x8 cm
-12x B&C E190 weiß L
-Hinweis: Druckfreigabe erforderlich, Lieferzeit 7-10 Tage"></textarea>
-      <div style="margin-top:8px;">
-        <button id="btnParse">Positionen erkennen</button>
-        <button id="btnTextExcel" disabled>Excel aus Text herunterladen</button>
-      </div>
-    </div>
+<div class="box">
+  <strong>Systemstatus:</strong><br>
+  <div id="sys" class="info">Wird geprüft…</div>
+</div>
 
-    <div class="box">
-      <strong>Systemstatus:</strong><br>
-      <div id="sys" class="small">Wird geprüft…</div>
-      <div class="small">Letzte Angebots-ID: <b id="qid">—</b></div>
-    </div>
-  </div>
-
-  <div class="col">
-    <div class="box">
-      <strong>Protokoll:</strong><br>
-      <div id="log"></div>
-    </div>
-  </div>
+<div class="box">
+  <strong>Protokoll:</strong><br>
+  <div id="log"></div>
 </div>
 
 <script>
+let busy = false;
 let lastQuotationId = null;
-let lastParsedText = "";
 
-function nowTs(){const d=new Date();const p=n=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
-function escapeHtml(s){return String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');}
-function log(msg, cls="info"){const el=document.getElementById("log");const div=document.createElement("div");div.innerHTML=`<span class="muted">[${nowTs()}]</span> <span class="${cls}">${escapeHtml(msg)}</span>`;el.prepend(div);}
-function logLine(){const el=document.getElementById("log");const div=document.createElement("div");div.className="hr";el.prepend(div);}
-
-function logErrorsFromSummary(summary){
-  if(!summary||!Array.isArray(summary.errors)||!summary.errors.length) return;
-  log('Details zu den Fehlern:', 'info');
-  summary.errors.forEach(err=>{
-    const line=[err.sheet?`[${err.sheet}]`:'',err.row?`Zeile ${err.row}`:'',err.field?`Feld "${err.field}"`:'','→',err.message||''].filter(Boolean).join(' ');
-    log('  - '+line,'error-item');
-  });
-}
-
-function logLexwareApi(technical){
-  logLine(); log('—— Lexware API ——','info');
-  if(!technical){ log('Keine technical-Daten vorhanden.','err'); return; }
-  if(technical.httpStatus) log('HTTP-Status: '+technical.httpStatus,'info');
-  const meta=technical.meta||{};
-  if(meta.requestId) log('requestId: '+meta.requestId,'info');
-  if(meta.traceId) log('traceId: '+meta.traceId,'info');
-  if(meta.path) log('path: '+meta.path,'info');
-  if(meta.timestamp) log('timestamp: '+meta.timestamp,'info');
-  if(meta.message) log('message: '+meta.message,'info');
-  if(Array.isArray(meta.details)&&meta.details.length){
-    log('details:','info');
-    meta.details.forEach(d=>{
-      const line=[d.field?d.field:'',d.violation?`(${d.violation})`:'',d.message?`→ ${d.message}`:''].filter(Boolean).join(' ');
-      log('  - '+line,'error-item');
-    });
-  }
-  if(technical.raw){
-    try{ log('raw:\n'+JSON.stringify(technical.raw,null,2),'info'); }
-    catch{ log('raw: '+String(technical.raw),'info'); }
-  }
-}
-
-async function readFileBase64(file){
-  return new Promise(resolve=>{
-    const r=new FileReader();
-    r.onload=()=>resolve(r.result.split(",")[1]);
+async function readFileBase64(file) {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
     r.readAsDataURL(file);
   });
 }
 
-async function callApi(endpoint, extraBody={}){
-  const fileInput=document.getElementById("file");
-  const password=document.getElementById("password").value;
-  const allowPriceOverride=document.getElementById("override").checked;
+function log(msg, cls = "") {
+  const el = document.getElementById("log");
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = msg;
+  el.prepend(div);
+}
 
-  if(!fileInput.files[0]){ log("Bitte zuerst eine Excel-Datei auswählen.","err"); return; }
-  const excelData=await readFileBase64(fileInput.files[0]);
+function logLine() {
+  const el = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = "hr";
+  el.prepend(div);
+}
 
-  let data;
-  try{
-    const res=await fetch(endpoint,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ excelData, password, allowPriceOverride, ...extraBody })
+function logErrorsFromSummary(summary) {
+  if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
+
+  log('Details zu den Fehlern:', 'info');
+  summary.errors.forEach(err => {
+    const line = [
+      err.sheet ? `[${err.sheet}]` : '',
+      err.row ? `Zeile ${err.row}` : '',
+      err.field ? `Feld "${err.field}"` : '',
+      '→',
+      err.message || ''
+    ].filter(Boolean).join(' ');
+    log('  - ' + line, 'error-item');
+  });
+}
+
+function logWarningsFromSummary(summary) {
+  if (!summary || !Array.isArray(summary.warnings) || !summary.warnings.length) return;
+
+  log('Hinweise / Warnungen:', 'info');
+  summary.warnings.forEach(w => {
+    const line = [
+      w.sheet ? `[${w.sheet}]` : '',
+      w.row ? `Zeile ${w.row}` : '',
+      '→',
+      w.message || ''
+    ].filter(Boolean).join(' ');
+    log('  - ' + line, 'error-item');
+  });
+}
+
+function logLexwareApi(technical) {
+  logLine();
+  log('—— Lexware API ——', 'info');
+
+  if (!technical) {
+    log('Keine technical-Daten vorhanden (technical ist leer).', 'err');
+    return;
+  }
+
+  if (technical.httpStatus) log('HTTP-Status: ' + technical.httpStatus, 'info');
+
+  const meta = technical.meta || {};
+  if (meta.requestId) log('requestId: ' + meta.requestId, 'info');
+  if (meta.traceId) log('traceId: ' + meta.traceId, 'info');
+  if (meta.path) log('path: ' + meta.path, 'info');
+  if (meta.timestamp) log('timestamp: ' + meta.timestamp, 'info');
+  if (meta.message) log('message: ' + meta.message, 'info');
+
+  if (Array.isArray(meta.details) && meta.details.length) {
+    log('details:', 'info');
+    meta.details.forEach(d => {
+      const line = [
+        d.field ? d.field : '',
+        d.violation ? `(${d.violation})` : '',
+        d.message ? '→ ' + d.message : ''
+      ].filter(Boolean).join(' ');
+      log('  - ' + line, 'error-item');
     });
-    data=await res.json();
-  }catch(e){
-    console.error(e);
-    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.","err");
-    return;
   }
 
-  if(!data.ok){
-    log(`❌ Fehler (${data.status||"ERROR"}): ${data.message||"Unbekannt"}`,"err");
-    if(data.data&&data.data.summary) logErrorsFromSummary(data.data.summary);
-    logLexwareApi(data.technical||null);
-    return;
-  }
-
-  if(data.data&&data.data.quotationId){
-    lastQuotationId=data.data.quotationId;
-    document.getElementById("qid").textContent=lastQuotationId;
-    document.getElementById("btnPdf").disabled=false;
-    log("✅ Angebot erstellt — ID: "+lastQuotationId,"ok");
-  } else {
-    log("🟢 Test erfolgreich — keine kritischen Fehler.","ok");
+  if (technical.raw) {
+    try { log('raw:\n' + JSON.stringify(technical.raw, null, 2), 'info'); }
+    catch { log('raw: ' + String(technical.raw), 'info'); }
   }
 }
 
-document.getElementById("btnTemplate").onclick = async ()=>{
-  const password=document.getElementById("password").value;
-  try{
-    log("Template wird geladen …","info");
-    const res=await fetch("/api/template.xlsx",{ headers: password?{"x-tool-password":password}:{ } });
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download="lexware_template.xlsx";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    log("✅ Template Download gestartet.","ok");
-  }catch(e){
-    console.error(e);
-    log("❌ Template Download fehlgeschlagen.","err");
-  }
-};
+function setBusy(v) {
+  busy = v;
+  document.getElementById("btnTest").disabled = v;
+  document.getElementById("btnOffer").disabled = v;
+}
 
-document.getElementById("btnTest").onclick = ()=>callApi("/api/test-excel");
+async function callApi(endpoint) {
+  const fileInput = document.getElementById("file");
+  const password = document.getElementById("password").value;
+  const allowPriceOverride = document.getElementById("override").checked;
 
-document.getElementById("btnOffer").onclick = ()=>{
-  const finalize = document.getElementById("finalizeFlag").checked;
-  callApi("/api/create-offer", { finalize });
-};
-
-document.getElementById("btnFinalize").onclick = ()=>{
-  if(lastQuotationId){
-    log("ℹ️ Bereits eine Angebots-ID vorhanden. Nachträgliches Finalisieren geht per API nicht. Bitte beim Erstellen finalisieren oder in Lexware finalisieren.","info");
+  if (!fileInput.files[0]) {
+    log("Bitte zuerst eine Excel-Datei auswählen.", "err");
     return;
   }
-  document.getElementById("finalizeFlag").checked = true;
-  callApi("/api/create-offer", { finalize: true });
-};
+  if (busy) return;
 
-document.getElementById("btnPdf").onclick = async ()=>{
-  if(!lastQuotationId){ log("Bitte zuerst ein Angebot erstellen, dann PDF laden.","err"); return; }
-  const password=document.getElementById("password").value;
-  try{
-    log("PDF wird geladen …","info");
-    const res=await fetch("/api/download-pdf?id="+encodeURIComponent(lastQuotationId),{ headers: password?{"x-tool-password":password}:{ } });
-    const ct=(res.headers.get("content-type")||"").toLowerCase();
-    if(ct.includes("application/json")){
-      const data=await res.json();
-      if(!data.ok){ log(`❌ Fehler (${data.status||"ERROR"}): ${data.message||"PDF Download fehlgeschlagen"}`,"err"); logLexwareApi(data.technical||null); return; }
+  setBusy(true);
+  try {
+    const excelData = await readFileBase64(fileInput.files[0]);
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excelData, password, allowPriceOverride })
+    });
+
+    const data = await res.json();
+    console.log("API Antwort:", data);
+
+    if (!data.ok) {
+      log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "Unbekannt"}`, "err");
+      if (data.data && data.data.summary) {
+        logErrorsFromSummary(data.data.summary);
+        logWarningsFromSummary(data.data.summary);
+      }
+      logLexwareApi(data.technical || null);
+      return;
     }
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download="angebot.pdf";
-    document.body.appendChild(a); a.click(); a.remove();
+
+    if (data.data && data.data.quotationId) {
+      lastQuotationId = data.data.quotationId;
+      log("✅ Angebot erstellt — ID: " + lastQuotationId, "ok");
+      document.getElementById("btnPdf").disabled = false;
+    } else {
+      log("🟢 Test erfolgreich — keine kritischen Fehler. ", "ok");
+    }
+
+    if (data.data && data.data.summary) logWarningsFromSummary(data.data.summary);
+
+  } catch (e) {
+    console.error(e);
+    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
+  } finally {
+    setBusy(false);
+  }
+}
+
+// Buttons
+document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
+document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
+
+// ✅ Template Download (dynamisch, mit Passwort-Header; Fallback auf Browser-Download)
+document.getElementById("btnTemplate").onclick = async () => {
+  const password = document.getElementById("password").value;
+
+  try {
+    log("Template wird generiert/geladen (TTL 10 min) …", "info");
+
+    const res = await fetch("/api/template.xlsx", {
+      method: "GET",
+      headers: password ? { "x-tool-password": password } : {}
+    });
+
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const data = await res.json();
+      if (!data.ok) {
+        log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "Template Download fehlgeschlagen"}`, "err");
+        logLexwareApi(data.technical || null);
+        return;
+      }
+    }
+
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const blob = await res.blob();
+
+    let filename = "lexware_template.xlsx";
+    const cd = res.headers.get("content-disposition");
+    if (cd && cd.includes("filename=")) {
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      if (m && m[1]) filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     URL.revokeObjectURL(url);
-    log("✅ PDF Download gestartet.","ok");
-  }catch(e){
+
+    log("✅ Template Download gestartet.", "ok");
+  } catch (e) {
     console.error(e);
-    log("❌ PDF Download fehlgeschlagen.","err");
+    // Fallback: Browser-Navigation (hilft bei Basic Auth Prompt)
+    log("⚠️ Download per fetch fehlgeschlagen – Fallback über Browser-Download…", "info");
+    window.location.href = "/api/template.xlsx";
   }
 };
 
-document.getElementById("btnParse").onclick = async ()=>{
-  const password=document.getElementById("password").value;
-  const text=document.getElementById("paste").value.trim();
-  if(!text){ log("Bitte zuerst Text einfügen.","err"); return; }
-  lastParsedText=text;
-  document.getElementById("btnTextExcel").disabled=true;
+// ✅ PDF Download (mit Passwort-Header)
+document.getElementById("btnPdf").onclick = async () => {
+  if (!lastQuotationId) {
+    log("Bitte zuerst ein Angebot erstellen, dann PDF laden.", "err");
+    return;
+  }
 
-  try{
-    log("Parser läuft …","info");
-    const res=await fetch("/api/parse-text",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json", ...(password?{"x-tool-password":password}:{ }) },
-      body:JSON.stringify({ text })
-    });
-    const data=await res.json();
-    if(!data.ok){ log(`❌ Fehler (${data.status||"ERROR"}): ${data.message||"Parser Fehler"}`,"err"); logLexwareApi(data.technical||null); return; }
+  const password = document.getElementById("password").value;
 
-    const items=data.data?.items||[];
-    const warnings=data.data?.warnings||[];
+  try {
+    log("PDF wird geladen …", "info");
 
-    log(`✅ Erkannt: ${items.length} Position(en)`,"ok");
-    items.slice(0,50).forEach((it,i)=>{
-      const qty=(it.type==='text')?'':(it.quantity??'');
-      const unit=(it.type==='text')?'':(it.unitName||'');
-      const sku=it.articleNumber?` | SKU: ${it.articleNumber}`:'';
-      const aid=it.articleId?` | articleId: ${it.articleId}`:'';
-      log(`  ${i+1}. [${it.type}] ${qty} ${unit} — ${it.name}${sku}${aid}`,"info");
-      if(it.description) log(`      desc: ${it.description}`,"muted");
+    const res = await fetch("/api/download-pdf?id=" + encodeURIComponent(lastQuotationId), {
+      method: "GET",
+      headers: password ? { "x-tool-password": password } : {}
     });
 
-    if(warnings.length){
-      log(`⚠️ Parser Hinweise (${warnings.length}):`,"info");
-      warnings.forEach(w=>log(`  - Zeile ${w.line}: ${w.message}`,"muted"));
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const data = await res.json();
+      if (!data.ok) {
+        log(`❌ Fehler (${data.status || "ERROR"}): ${data.message || "PDF Download fehlgeschlagen"}`, "err");
+        logLexwareApi(data.technical || null);
+        return;
+      }
     }
 
-    document.getElementById("btnTextExcel").disabled=false;
-  }catch(e){
+    const blob = await res.blob();
+
+    let filename = "angebot.pdf";
+    const cd = res.headers.get("content-disposition");
+    if (cd && cd.includes("filename=")) {
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      if (m && m[1]) filename = m[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log("✅ PDF Download gestartet.", "ok");
+  } catch (e) {
     console.error(e);
-    log("❌ Parser Fehler (Netzwerk/Server).","err");
+    log("❌ PDF Download fehlgeschlagen (Netzwerk/Browser).", "err");
   }
 };
 
-document.getElementById("btnTextExcel").onclick = async ()=>{
-  const password=document.getElementById("password").value;
-  if(!lastParsedText){ log("Bitte zuerst 'Positionen erkennen' ausführen.","err"); return; }
-  try{
-    log("Excel aus Text wird erstellt …","info");
-    const url="/api/text-to-excel?taxType=net&text="+encodeURIComponent(lastParsedText);
-    const res=await fetch(url,{ headers: password?{"x-tool-password":password}:{ } });
-
-    const ct=(res.headers.get("content-type")||"").toLowerCase();
-    if(ct.includes("application/json")){
-      const data=await res.json();
-      if(!data.ok){ log(`❌ Fehler (${data.status||"ERROR"}): ${data.message||"Text→Excel fehlgeschlagen"}`,"err"); logLexwareApi(data.technical||null); return; }
-    }
-
-    const blob=await res.blob();
-    const dlUrl=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=dlUrl; a.download="from_text.xlsx";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(dlUrl);
-    log("✅ Download gestartet: from_text.xlsx","ok");
-  }catch(e){
-    console.error(e);
-    log("❌ Text→Excel Download fehlgeschlagen.","err");
-  }
-};
-
+// Ping
 fetch("/api/ping")
-  .then(r=>r.json())
-  .then(d=>{
-    const sys=document.getElementById("sys");
-    if(!d.ok){ sys.textContent="Backend antwortet, aber ok=false."; return; }
-    sys.textContent="Backend erreichbar — Passwort: "+(d.passwordProtected?"aktiv":"aus")+" — Template TTL: "+Math.round((d.templateTtlMs||0)/60000)+" min";
+  .then(r => r.json())
+  .then(d => {
+    const sys = document.getElementById("sys");
+    if (!d.ok) {
+      sys.textContent = "Backend antwortet, aber ok=false.";
+      return;
+    }
+    sys.textContent =
+      "Backend erreichbar — Rate-Limiter: " + (d.minIntervalMs || 0) + " ms — Passwort: " +
+      (d.passwordProtected ? "aktiv" : "aus") +
+      " — Template TTL: " + Math.round((d.templateTtlMs || 0) / 60000) + " min";
   })
-  .catch(()=>{ document.getElementById("sys").textContent="❌ Backend nicht erreichbar."; });
+  .catch(() => {
+    document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
+  });
 </script>
 
 </body>
