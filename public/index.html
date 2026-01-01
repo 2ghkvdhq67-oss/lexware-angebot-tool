@@ -21,10 +21,16 @@ button {
   cursor: pointer;
 }
 
+input[type="text"], input[type="password"] {
+  padding: 7px 10px;
+  width: 360px;
+  max-width: 100%;
+}
+
 #log {
   white-space: pre-wrap;
-  font-family: monospace;
-  max-height: 320px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  max-height: 340px;
   overflow-y: auto;
   border: 1px dashed #eee;
   padding: 10px;
@@ -32,9 +38,9 @@ button {
   background: #fafafa;
 }
 
-.ok  { color: green; }
-.err { color: red; }
-.info { color: #444; }
+.ok  { color: #0a7a0a; }
+.err { color: #b00020; }
+.info { color: #333; }
 
 .line {
   margin: 2px 0;
@@ -46,6 +52,8 @@ hr.sep {
   border-top: 1px solid #eee;
   margin: 10px 0;
 }
+.small { font-size: 12px; color:#666; }
+.row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
 </style>
 </head>
 
@@ -54,12 +62,20 @@ hr.sep {
 <h2>Maiershirts — Lexoffice Angebots-Tool</h2>
 
 <div class="box">
-  <label>Tool-Passwort:</label><br>
-  <input id="password" type="password" />
+  <div class="row">
+    <div>
+      <label>Tool-Passwort:</label><br>
+      <input id="password" type="password" placeholder="Passwort (falls aktiviert)" />
+      <div class="small">Wird für API-Aufrufe per Header <code>x-tool-password</code> genutzt.</div>
+    </div>
+  </div>
 </div>
 
 <div class="box">
-  <button id="btnTemplate">Template herunterladen</button>
+  <div class="row">
+    <button id="btnTemplate">Template herunterladen (automatisch, mit Dropdown)</button>
+    <span class="small">zieht Artikel-Lookup automatisch aus Lexware (TTL 10 min)</span>
+  </div>
 </div>
 
 <div class="box">
@@ -68,15 +84,32 @@ hr.sep {
 </div>
 
 <div class="box">
-  <label>
-    <input id="override" type="checkbox" />
-    Artikelpreis überschreiben erlauben
-  </label>
+  <div class="row">
+    <label>
+      <input id="override" type="checkbox" />
+      Artikelpreis überschreiben erlauben
+    </label>
+  </div>
 </div>
 
 <div class="box">
-  <button id="btnTest">Testmodus ausführen</button>
-  <button id="btnOffer">Angebot erstellen</button>
+  <div class="row">
+    <button id="btnTest">Testmodus ausführen</button>
+    <button id="btnOffer">Angebot erstellen</button>
+    <button id="btnFinalize">Angebot finalisieren</button>
+  </div>
+</div>
+
+<div class="box">
+  <div class="row">
+    <div>
+      <label>Quotation ID (für PDF):</label><br>
+      <input id="quotationId" type="text" placeholder="wird nach Erstellung automatisch gefüllt" />
+    </div>
+    <div style="align-self:flex-end;">
+      <button id="btnPdf">PDF herunterladen</button>
+    </div>
+  </div>
 </div>
 
 <div class="box">
@@ -100,7 +133,7 @@ function log(msg, cls = "info") {
   const div = document.createElement("div");
   div.className = "line " + (cls || "");
   div.textContent = `[${ts()}] ${msg}`;
-  el.appendChild(div);          // ✅ CHRONOLOGISCH (append)
+  el.appendChild(div);          // ✅ CHRONOLOGISCH
   el.scrollTop = el.scrollHeight;
 }
 
@@ -118,6 +151,11 @@ async function readFileBase64(file) {
     r.onload = () => resolve(r.result.split(",")[1]);
     r.readAsDataURL(file);
   });
+}
+
+function getPasswordHeader() {
+  const password = document.getElementById("password").value || "";
+  return password ? { "x-tool-password": password } : {};
 }
 
 function printTechnical(technical) {
@@ -142,11 +180,8 @@ function printTechnical(technical) {
 
   if (technical.raw) {
     log("raw:", "info");
-    try {
-      log(JSON.stringify(technical.raw, null, 2), "info");
-    } catch {
-      log(String(technical.raw), "info");
-    }
+    try { log(JSON.stringify(technical.raw, null, 2), "info"); }
+    catch { log(String(technical.raw), "info"); }
   }
 }
 
@@ -180,86 +215,90 @@ function logWarningsFromSummary(summary) {
   });
 }
 
-async function callApi(endpoint) {
+async function postExcel(endpoint, extraBody = {}) {
   const fileInput = document.getElementById("file");
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
 
-  sep();
-  log("Aktion: " + endpoint, "info");
-
   if (!fileInput.files[0]) {
     log("Bitte zuerst eine Excel-Datei auswählen.", "err");
-    return;
+    return null;
   }
 
   const excelData = await readFileBase64(fileInput.files[0]);
 
-  let data;
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ excelData, password, allowPriceOverride })
-    });
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ excelData, password, allowPriceOverride, ...extraBody })
+  });
 
-    data = await res.json();
+  return await res.json();
+}
+
+async function runTest() {
+  sep();
+  log("Aktion: /api/test-excel", "info");
+
+  try {
+    const data = await postExcel("/api/test-excel");
+    if (!data) return;
+
+    if (!data.ok) {
+      log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Unbekannt"}`, "err");
+      if (data.data?.summary) {
+        logErrorsFromSummary(data.data.summary);
+        logWarningsFromSummary(data.data.summary);
+      }
+      if (data.technical) printTechnical(data.technical);
+      return;
+    }
+
+    log("🟢 " + (data.message || "Test erfolgreich — keine kritischen Fehler."), "ok");
+    if (data.data?.summary) logWarningsFromSummary(data.data.summary);
   } catch (e) {
     console.error(e);
-    log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
-    return;
-  }
-
-  // Fehlerfall
-  if (!data.ok) {
-    const status = data.status || "UNBEKANNT";
-    const msg = data.message || "Keine genaue Fehlermeldung vorhanden.";
-    log(`❌ Fehler (${status}): ${msg}`, "err");
-
-    // Summary-Validierungsfehler
-    if (data.data && data.data.summary) {
-      logErrorsFromSummary(data.data.summary);
-      logWarningsFromSummary(data.data.summary);
-    }
-
-    // Lexware technical Fehlerdetails
-    if (data.technical) {
-      printTechnical(data.technical);
-    }
-
-    return;
-  }
-
-  // Erfolgsfall
-  if (data.data && data.data.quotationId) {
-    log("✅ Angebot erstellt — ID: " + data.data.quotationId, "ok");
-  } else {
-    log("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
-  }
-
-  if (data.data && data.data.summary) {
-    logWarningsFromSummary(data.data.summary);
+    log("❌ Netzwerk- oder Serverfehler beim Test.", "err");
   }
 }
 
-// ✅ Template Download: nutzt /api/template.xlsx (auth) – fällt sonst auf /templates/lexware_template.xlsx zurück
-async function downloadTemplate() {
-  const password = document.getElementById("password").value;
+async function runCreate(finalize) {
   sep();
-  log("Aktion: Template herunterladen", "info");
+  log("Aktion: /api/create-offer (finalize=" + (finalize ? "true" : "false") + ")", "info");
 
-  // 1) versuche dynamisch
   try {
-    const r = await fetch("/api/template.xlsx", {
-      method: "GET",
-      headers: {
-        "X-Tool-Password": password || ""
-      }
-    });
+    const data = await postExcel("/api/create-offer", { finalize: !!finalize });
+    if (!data) return;
 
+    if (!data.ok) {
+      log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Unbekannt"}`, "err");
+      if (data.data?.summary) {
+        logErrorsFromSummary(data.data.summary);
+        logWarningsFromSummary(data.data.summary);
+      }
+      if (data.technical) printTechnical(data.technical);
+      return;
+    }
+
+    const qid = data.data?.quotationId || null;
+    log("✅ Angebot erstellt — ID: " + (qid || "(keine ID zurückgegeben)"), "ok");
+    if (qid) document.getElementById("quotationId").value = qid;
+
+    if (data.data?.summary) logWarningsFromSummary(data.data.summary);
+  } catch (e) {
+    console.error(e);
+    log("❌ Netzwerk- oder Serverfehler beim Erstellen.", "err");
+  }
+}
+
+async function downloadTemplate() {
+  sep();
+  log("Aktion: Template herunterladen (/api/template.xlsx)", "info");
+
+  try {
+    const r = await fetch("/api/template.xlsx", { method: "GET", headers: { ...getPasswordHeader() } });
     const ct = (r.headers.get("content-type") || "").toLowerCase();
 
-    // API kann im Fehlerfall JSON liefern
     if (ct.includes("application/json")) {
       const j = await r.json();
       log(`❌ Template Fehler (${j.status || "ERROR"}): ${j.message || "Unbekannt"}`, "err");
@@ -283,27 +322,68 @@ async function downloadTemplate() {
     a.remove();
     URL.revokeObjectURL(url);
 
-    log("✅ Template heruntergeladen (dynamisch).", "ok");
-    return;
+    log("✅ Template heruntergeladen (Dropdown & Artikel-Lookup automatisch).", "ok");
   } catch (e) {
-    console.warn("Dynamischer Template-Download fehlgeschlagen:", e);
-  }
-
-  // 2) fallback statisch (ohne auth)
-  try {
-    window.location.href = "/templates/lexware_template.xlsx";
-    log("ℹ️ Fallback: statisches Template wird geladen.", "info");
-  } catch (e) {
-    log("❌ Fallback Template Download fehlgeschlagen.", "err");
+    console.error(e);
+    log("❌ Template Download fehlgeschlagen (Netzwerk/Server).", "err");
   }
 }
 
-// Buttons verbinden
-document.getElementById("btnTest").onclick  = () => callApi("/api/test-excel");
-document.getElementById("btnOffer").onclick = () => callApi("/api/create-offer");
-document.getElementById("btnTemplate").onclick = () => downloadTemplate();
+async function downloadPdf() {
+  sep();
+  const id = (document.getElementById("quotationId").value || "").trim();
+  if (!id) {
+    log("Bitte Quotation ID eingeben (oder erst Angebot erstellen).", "err");
+    return;
+  }
 
-// Systemstatus prüfen
+  log("Aktion: PDF herunterladen (/api/download-pdf?id=...)", "info");
+
+  try {
+    const r = await fetch("/api/download-pdf?id=" + encodeURIComponent(id), {
+      method: "GET",
+      headers: { ...getPasswordHeader() }
+    });
+
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const j = await r.json();
+      log(`❌ PDF Fehler (${j.status || "ERROR"}): ${j.message || "Unbekannt"}`, "err");
+      if (j.technical) printTechnical(j.technical);
+      return;
+    }
+
+    if (!r.ok) {
+      log("❌ PDF Download fehlgeschlagen (HTTP " + r.status + ").", "err");
+      return;
+    }
+
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "quotation.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log("✅ PDF heruntergeladen.", "ok");
+  } catch (e) {
+    console.error(e);
+    log("❌ PDF Download fehlgeschlagen (Netzwerk/Server).", "err");
+  }
+}
+
+// Buttons
+document.getElementById("btnTemplate").onclick = () => downloadTemplate();
+document.getElementById("btnTest").onclick = () => runTest();
+document.getElementById("btnOffer").onclick = () => runCreate(false);
+document.getElementById("btnFinalize").onclick = () => runCreate(true);
+document.getElementById("btnPdf").onclick = () => downloadPdf();
+
+// Systemstatus
 fetch("/api/ping")
   .then(r => r.json())
   .then(d => {
