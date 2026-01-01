@@ -1,6 +1,8 @@
 'use strict';
 
-require('dotenv').config();
+// ✅ SAFEST: dotenv optional (Render braucht dotenv nicht zwingend)
+try { require('dotenv').config(); }
+catch (e) { console.warn('[BOOT] dotenv nicht verfügbar – übersprungen (OK auf Render).'); }
 
 const path = require('path');
 const fs = require('fs');
@@ -9,9 +11,19 @@ const crypto = require('crypto');
 const express = require('express');
 const axios = require('axios');
 const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 const app = express();
 app.use(express.json({ limit: '25mb' }));
+
+// ✅ Stabilität auf Render: echte Ursache im Log statt "exited early"
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err);
+  process.exit(1);
+});
 
 // ------------------------------------------------------------
 // ENV
@@ -152,7 +164,8 @@ function toolPasswordMiddleware(req, res, next) {
   const supplied =
     req.body?.password ||
     req.query?.password ||
-    req.headers['x-tool-password'];
+    req.headers['x-tool-password'] ||
+    req.headers['x-tool-password'.toLowerCase()];
 
   if (supplied === TOOL_PASSWORD) return next();
 
@@ -454,7 +467,11 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const excelRow = i + 2;
 
     const type = toLowerTrim(row.type);
-    const articleId = String(row.articleId || row.articleID || '').trim();
+
+    // ✅ Phase 1 Komfort: akzeptiere auch articleTitle (Excel Dropdown) → mappe in articleId wenn nötig
+    //    (falls articleId leer ist, aber articleTitle gesetzt, versuchen wir es über die Artikel-Liste zu mappen)
+    let articleId = String(row.articleId || row.articleID || '').trim();
+    const articleTitle = String(row.articleTitle || '').trim();
 
     let name = String(row.name || '').trim();
     const description = String(row.description || '').trim();
@@ -466,7 +483,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const taxRatePercentage = numOrNull(row.taxRatePercentage ?? row.taxRate ?? row.tax);
     const discountPercent = numOrNull(row.discountPercent ?? row.discount);
 
-    const hasAny = type || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
+    const hasAny = type || articleId || articleTitle || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
     if (!hasAny) continue;
 
     if (!type) {
@@ -490,6 +507,16 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     if (!unitName) {
       errors.push({ sheet: 'Positionen', row: excelRow, field: 'unitName', message: 'unitName ist Pflicht.' });
       continue;
+    }
+
+    // ✅ mappe articleTitle → articleId, wenn articleId leer ist
+    if (!articleId && articleTitle) {
+      const list = await listAllArticlesCached();
+      const hit = list.find(a => String(a.title || '').trim() === articleTitle);
+      if (hit?.id) {
+        articleId = hit.id;
+        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
+      }
     }
 
     if ((type === 'material' || type === 'service') && !articleId) {
@@ -651,10 +678,70 @@ const templateCache = {
   createdAt: 0
 };
 
+// ✅ Master-Template mit Dropdowns/Validierungen beibehalten (ExcelJS)
+//    - lädt /templates/Lexware_Template.xlsx (oder erste .xlsx)
+//    - aktualisiert nur das Sheet "Artikel-Lookup"
+//    - schreibt als Buffer zurück (Validierungen/Formeln bleiben erhalten)
+async function generateTemplateBufferFromMaster(articles) {
+  const templatesDir = path.join(__dirname, 'templates');
+  const preferred = [
+    'Lexware_Template.xlsx',
+    'lexware_template.xlsx',
+    'Lexware_Template.XLSX',
+    'lexware_template.XLSX'
+  ].map(n => path.join(templatesDir, n));
+
+  let masterPath = preferred.find(p => fs.existsSync(p));
+
+  if (!masterPath) {
+    try {
+      const candidates = fs.existsSync(templatesDir)
+        ? fs.readdirSync(templatesDir).filter(f => f.toLowerCase().endsWith('.xlsx'))
+        : [];
+      if (candidates.length) masterPath = path.join(templatesDir, candidates[0]);
+    } catch { /* ignore */ }
+  }
+
+  if (!masterPath || !fs.existsSync(masterPath)) {
+    return null; // Signal: kein Master vorhanden
+  }
+
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(masterPath);
+
+  const ws = wb.getWorksheet('Artikel-Lookup');
+  if (!ws) return null;
+
+  // Header-Zeile (Row 1) bleibt bestehen; ab Row 2 löschen wir alte Daten
+  const rowCount = ws.rowCount || 0;
+  if (rowCount > 1) {
+    ws.spliceRows(2, rowCount - 1);
+  }
+
+  const rows = (articles || []).map(a => ([
+    a.id || '',
+    a.title || '',
+    a.articleNumber || '',
+    a.type || '',
+    a.unitName || '',
+    a.price?.netPrice ?? '',
+    a.price?.grossPrice ?? '',
+    a.price?.leadingPrice ?? '',
+    a.price?.taxRate ?? '',
+    a.archived ?? '',
+    a.version ?? ''
+  ]));
+
+  for (const r of rows) ws.addRow(r);
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+// ✅ Fallback Workbook (falls Master nicht vorhanden)
 function buildTemplateWorkbook(articles) {
   const wb = XLSX.utils.book_new();
 
-  // 1) Artikel-Lookup
   const rows = (articles || []).map(a => ({
     id: a.id || '',
     title: a.title || '',
@@ -673,17 +760,15 @@ function buildTemplateWorkbook(articles) {
   });
   XLSX.utils.book_append_sheet(wb, shArticles, 'Artikel-Lookup');
 
-  // 2) Angebot (Key/Value)
   const angebot = [
     { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht Lexware taxConditions.taxType)' }
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(angebot), 'Angebot');
 
-  // 3) Kunde (Key/Value)
   const kunde = [
     { Feld: 'kind', Wert: 'company', Hinweis: 'company oder person' },
     { Feld: 'name', Wert: '', Hinweis: 'Pflicht: Firmenname (company) oder Vollname (person)' },
-    { Feld: 'email', Wert: '', Hinweis: 'Optional, aber hilfreich fürs Matching' },
+    { Feld: 'email', Wert: '', Hinweis: 'Optional, aber sehr hilfreich fürs Matching' },
     { Feld: 'contactPerson', Wert: '', Hinweis: 'Optional' },
     { Feld: 'street', Wert: '', Hinweis: 'Optional' },
     { Feld: 'zip', Wert: '', Hinweis: 'Optional' },
@@ -694,23 +779,22 @@ function buildTemplateWorkbook(articles) {
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kunde), 'Kunde');
 
-  // 4) Positionen (tabellarisch)
   const posHeader = [
-    'pos','type','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
+    'pos','type','articleTitle','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
   ];
   const posExample = [
     {
-      pos: 1, type: 'custom', articleId: '', name: 'DTF Druck Brust 10×8 cm',
+      pos: 1, type: 'custom', articleTitle: '', articleId: '', name: 'DTF Druck Brust 10×8 cm',
       description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk',
       unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
     },
     {
-      pos: 2, type: 'text', articleId: '', name: 'Lieferzeit / Hinweis',
+      pos: 2, type: 'text', articleTitle: '', articleId: '', name: 'Lieferzeit / Hinweis',
       description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '',
       unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
     },
     {
-      pos: 3, type: 'material', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
+      pos: 3, type: 'material', articleTitle: '', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
       description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '',
       taxRatePercentage: '', discountPercent: ''
     }
@@ -718,9 +802,8 @@ function buildTemplateWorkbook(articles) {
   const shPos = XLSX.utils.json_to_sheet(posExample, { header: posHeader });
   XLSX.utils.book_append_sheet(wb, shPos, 'Positionen');
 
-  // 5) Anleitung
   const help = [
-    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren' },
+    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren oder articleTitle nutzen' },
     { Schritt: 2, Hinweis: 'Angebot: taxType setzen (net/gross)' },
     { Schritt: 3, Hinweis: 'Kunde: name ist Pflicht' },
     { Schritt: 4, Hinweis: 'Positionen: type + quantity > 0 + unitName Pflicht (außer text)' },
@@ -770,7 +853,7 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Dynamisches Template (auth + TTL 10min)
+// ✅ Dynamisches Template (auth + TTL 10min) – automatisch, Dropdown bleibt erhalten
 app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
   try {
     if (!API_KEY) {
@@ -784,15 +867,29 @@ app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
     }
 
     const now = Date.now();
+
     if (templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
       return res.status(200).send(templateCache.buffer);
     }
 
-    const articles = await listAllArticlesCached(); // hat selbst TTL 10min
-    const wb = buildTemplateWorkbook(articles);
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const articles = await listAllArticlesCached();
+
+    // 1) Master-Template (Dropdowns/Validierungen) bevorzugen
+    let buffer = null;
+    try {
+      buffer = await generateTemplateBufferFromMaster(articles);
+    } catch (e) {
+      console.warn('[TEMPLATE] Master-Template via ExcelJS fehlgeschlagen:', e?.message || e);
+      buffer = null;
+    }
+
+    // 2) Fallback: Workbook dynamisch bauen
+    if (!buffer) {
+      const wb = buildTemplateWorkbook(articles);
+      buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    }
 
     templateCache.buffer = buffer;
     templateCache.createdAt = now;
@@ -800,6 +897,7 @@ app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
     return res.status(200).send(buffer);
+
   } catch (err) {
     return res.status(200).json({
       ok: false,
