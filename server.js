@@ -164,8 +164,7 @@ function toolPasswordMiddleware(req, res, next) {
   const supplied =
     req.body?.password ||
     req.query?.password ||
-    req.headers['x-tool-password'] ||
-    req.headers['x-tool-password'.toLowerCase()];
+    req.headers['x-tool-password'];
 
   if (supplied === TOOL_PASSWORD) return next();
 
@@ -423,6 +422,21 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   const autoNamedLineItems = [];
   const byType = {};
 
+  // ✅ articleTitle→articleId Map (einmal pro Datei)
+  let titleToId = null;
+  async function ensureTitleMap() {
+    if (titleToId) return titleToId;
+    const list = await listAllArticlesCached();
+    titleToId = new Map();
+    for (const a of (list || [])) {
+      const t = String(a.title || '').trim();
+      const id = String(a.id || '').trim();
+      if (!t || !id) continue;
+      if (!titleToId.has(t)) titleToId.set(t, id);
+    }
+    return titleToId;
+  }
+
   const wb = XLSX.read(Buffer.from(excelBase64, 'base64'), { type: 'buffer' });
 
   const angebotRows = sheetToJson(wb, 'Angebot');
@@ -468,10 +482,14 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
     const type = toLowerTrim(row.type);
 
-    // ✅ Phase 1 Komfort: akzeptiere auch articleTitle (Excel Dropdown) → mappe in articleId wenn nötig
-    //    (falls articleId leer ist, aber articleTitle gesetzt, versuchen wir es über die Artikel-Liste zu mappen)
     let articleId = String(row.articleId || row.articleID || '').trim();
     const articleTitle = String(row.articleTitle || '').trim();
+
+    // ✅ Excel-Formelfehler wie #NAME? / #NV / etc. → ignorieren
+    if (articleId && articleId.startsWith('#')) {
+      warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleId war ein Excel-Formelfehler (${articleId}) → ignoriert.` });
+      articleId = '';
+    }
 
     let name = String(row.name || '').trim();
     const description = String(row.description || '').trim();
@@ -509,18 +527,20 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       continue;
     }
 
-    // ✅ mappe articleTitle → articleId, wenn articleId leer ist
+    // ✅ Phase-1 Komfort: articleTitle → articleId mappen (falls articleId leer)
     if (!articleId && articleTitle) {
-      const list = await listAllArticlesCached();
-      const hit = list.find(a => String(a.title || '').trim() === articleTitle);
-      if (hit?.id) {
-        articleId = hit.id;
+      const map = await ensureTitleMap();
+      const hit = map.get(articleTitle);
+      if (hit) {
+        articleId = hit;
         warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
+      } else {
+        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
       }
     }
 
     if ((type === 'material' || type === 'service') && !articleId) {
-      errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service.' });
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service (oder articleTitle wählen).' });
       continue;
     }
 
