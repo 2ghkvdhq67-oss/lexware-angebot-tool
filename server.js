@@ -13,7 +13,9 @@ const XLSX = require('xlsx');
 const app = express();
 app.use(express.json({ limit: '25mb' }));
 
+// ------------------------------------------------------------
 // ENV
+// ------------------------------------------------------------
 const API_KEY = process.env.LEXOFFICE_API_KEY || process.env.LEXWARE_API_KEY || '';
 const API_BASE_URL = (process.env.LEXOFFICE_API_BASE_URL || process.env.LEXWARE_API_BASE_URL || 'https://api.lexware.io')
   .replace(/\/+$/, '');
@@ -33,7 +35,12 @@ const MIN_INTERVAL_MS = Number(process.env.LEXWARE_MIN_INTERVAL_MS || '0');
 // TTL für dynamisches Template: 10 Minuten
 const TEMPLATE_TTL_MS = 10 * 60 * 1000;
 
-// Static: public + templates
+// Axios timeout (damit Requests nicht "hängen bleiben")
+const AXIOS_TIMEOUT_MS = Number(process.env.AXIOS_TIMEOUT_MS || '45000'); // 45s default
+
+// ------------------------------------------------------------
+// Static: public + templates (statisch bleibt erhalten!)
+// ------------------------------------------------------------
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/templates', express.static(path.join(__dirname, 'templates')));
 
@@ -67,11 +74,34 @@ app.get('/templates/lexware_template.xlsx', (req, res) => {
   return res.sendFile(filePath);
 });
 
-// Helpers: technical payload
+// ------------------------------------------------------------
+// Helpers: technical payload + Buffer/ArrayBuffer Decode
+// ------------------------------------------------------------
+function decodeBufferToStringMaybeJson(input) {
+  try {
+    if (input && input instanceof ArrayBuffer) {
+      const s = Buffer.from(input).toString('utf8');
+      try { return JSON.parse(s); } catch { return s; }
+    }
+    if (Buffer.isBuffer(input)) {
+      const s = input.toString('utf8');
+      try { return JSON.parse(s); } catch { return s; }
+    }
+    if (input && typeof input === 'object' && input.type === 'Buffer' && Array.isArray(input.data)) {
+      const s = Buffer.from(input.data).toString('utf8');
+      try { return JSON.parse(s); } catch { return s; }
+    }
+    return input;
+  } catch {
+    return input;
+  }
+}
+
 function safeJson(v) {
   try {
-    if (v === undefined) return null;
-    return JSON.parse(JSON.stringify(v));
+    const decoded = decodeBufferToStringMaybeJson(v);
+    if (decoded === undefined) return null;
+    return JSON.parse(JSON.stringify(decoded));
   } catch {
     try { return String(v); } catch { return null; }
   }
@@ -115,7 +145,9 @@ function fail(res, payload) {
   return res.json({ ok: false, ...payload });
 }
 
+// ------------------------------------------------------------
 // Auth: Basic Auth optional ODER TOOL_PASSWORD im Body/Query/Header
+// ------------------------------------------------------------
 function parseBasicAuth(header) {
   if (!header || !header.startsWith('Basic ')) return null;
   const b64 = header.slice(6);
@@ -160,7 +192,9 @@ function authMiddleware(req, res, next) {
   return toolPasswordMiddleware(req, res, next);
 }
 
+// ------------------------------------------------------------
 // Rate Limit: TokenBucket 2 req/s + optional MIN_INTERVAL_MS + retry 429
+// ------------------------------------------------------------
 class TokenBucket {
   constructor({ capacity, refillPerSec }) {
     this.capacity = capacity;
@@ -222,31 +256,41 @@ async function lexwareRequest({ method, url, headers, data, responseType, accept
     await bucket.acquire();
     await enforceMinInterval();
 
-    const res = await axios({
-      method,
-      url,
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        Accept: accept || 'application/json',
-        ...(headers || {})
-      },
-      data,
-      responseType: responseType || 'json',
-      validateStatus: () => true
-    });
+    try {
+      const res = await axios({
+        method,
+        url,
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+          Accept: accept || 'application/json',
+          ...(headers || {})
+        },
+        data,
+        responseType: responseType || 'json',
+        validateStatus: () => true,
+        timeout: AXIOS_TIMEOUT_MS
+      });
 
-    if (res.status !== 429) return res;
+      if (res.status !== 429) return res;
 
-    const base = 800 * Math.pow(2, attempt);
-    const jitter = Math.floor(Math.random() * 250);
-    const wait = Math.min(12000, base + jitter);
-    await new Promise(r => setTimeout(r, wait));
+      const base = 800 * Math.pow(2, attempt);
+      const jitter = Math.floor(Math.random() * 250);
+      const wait = Math.min(12000, base + jitter);
+      await new Promise(r => setTimeout(r, wait));
+    } catch (err) {
+      // wichtig: immer kontrolliert zurückgeben (statt "hängen")
+      const status = err?.response?.status || 0;
+      const raw = err?.response?.data || { message: 'NETWORK_OR_TIMEOUT', detail: err?.message || 'request failed' };
+      return { status, data: raw, headers: err?.response?.headers || {} };
+    }
   }
 
   return { status: 429, data: { message: 'Rate limit exceeded (client retries exhausted)' } };
 }
 
+// ------------------------------------------------------------
 // Excel helper
+// ------------------------------------------------------------
 function sheetToJson(wb, name) {
   const sh = wb.Sheets[name];
   return sh ? XLSX.utils.sheet_to_json(sh, { defval: '' }) : null;
@@ -286,19 +330,14 @@ function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-function normalizeTitle(s) {
-  return String(s || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
+// ------------------------------------------------------------
 // Artikel Cache + Artikel API
+// ------------------------------------------------------------
 const articleCache = {
   byId: new Map(),
   list: null,
   fetchedAt: 0,
-  ttlMs: TEMPLATE_TTL_MS
+  ttlMs: TEMPLATE_TTL_MS // 10 Minuten
 };
 
 function clearArticleCache() {
@@ -357,7 +396,9 @@ async function listAllArticlesCached(forceRefresh = false) {
   return all;
 }
 
+// ------------------------------------------------------------
 // UnitPrice builder (AUTO)
+// ------------------------------------------------------------
 function buildUnitPriceFromNetGross({ net, gross, taxRate }) {
   const tr = Number(taxRate ?? 19);
   let netAmount = net != null ? Number(net) : null;
@@ -398,7 +439,9 @@ function buildUnitPriceFromArticle(articleObj) {
   return buildUnitPriceFromNetGross({ net, gross, taxRate });
 }
 
+// ------------------------------------------------------------
 // Excel -> Quotation Payload
+// ------------------------------------------------------------
 async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverride }) {
   const errors = [];
   const warnings = [];
@@ -417,8 +460,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   if (errors.length) return { ok: false, payload: null, summary: { errors, warnings } };
 
   const angebot = sheetRowsToKeyValueObject(angebotRows) || angebotRows[0] || {};
-  let taxType = String(angebot.taxType || angebot.TaxType || angebot.TAXTYPE || '').trim();
-  taxType = normalizeTitle(taxType); // net/gross robust
+  const taxType = String(angebot.taxType || angebot.TaxType || angebot.TAXTYPE || '').trim();
   if (!taxType) errors.push({ sheet: 'Angebot', row: 2, field: 'taxType', message: 'taxType ist Pflicht (z. B. „gross“ oder „net“).' });
 
   const kunde = sheetRowsToKeyValueObject(kundeRows) || kundeRows[0] || {};
@@ -445,48 +487,12 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
   const lineItems = [];
 
-  // Artikel-Liste einmal laden (für articleTitle-Mapping), cached/TTL
-  const allArticles = await listAllArticlesCached(false);
-  const articlesByNormTitle = new Map();
-  const articlesByNormNumber = new Map();
-  for (const a of allArticles) {
-    if (a?.title) articlesByNormTitle.set(normalizeTitle(a.title), a);
-    if (a?.articleNumber) articlesByNormNumber.set(normalizeTitle(a.articleNumber), a);
-  }
-
   for (let i = 0; i < posRows.length; i++) {
     const row = posRows[i];
     const excelRow = i + 2;
 
     const type = toLowerTrim(row.type);
-    let articleId = String(row.articleId || row.articleID || '').trim();
-
-    // Excel hat oft articleTitle Dropdown
-    const articleTitleRaw = String(row.articleTitle || row.articleText || '').trim();
-    const articleTitleNorm = normalizeTitle(articleTitleRaw);
-
-    // Mapping: articleTitle -> articleId (wenn articleId leer)
-    if (!articleId && articleTitleNorm) {
-      let match = articlesByNormTitle.get(articleTitleNorm) || articlesByNormNumber.get(articleTitleNorm) || null;
-
-      // 2. Chance: contains-unique (z.B. wenn Excel doppelte Spaces hat)
-      if (!match) {
-        const contains = allArticles.filter(a => normalizeTitle(a.title).includes(articleTitleNorm));
-        if (contains.length === 1) match = contains[0];
-      }
-
-      if (match?.id) {
-        articleId = match.id;
-        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitleRaw}" → articleId automatisch gesetzt.` });
-      } else {
-        // Hauptursache ist oft TTL/Cache oder Tippfehler
-        warnings.push({
-          sheet: 'Positionen',
-          row: excelRow,
-          message: `articleTitle "${articleTitleRaw}" konnte nicht gemappt werden (kein Treffer). Tipp: Artikel-Lookup/Cache aktualisieren oder Titel exakt aus Dropdown wählen.`
-        });
-      }
-    }
+    const articleId = String(row.articleId || row.articleID || '').trim();
 
     let name = String(row.name || '').trim();
     const description = String(row.description || '').trim();
@@ -498,7 +504,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const taxRatePercentage = numOrNull(row.taxRatePercentage ?? row.taxRate ?? row.tax);
     const discountPercent = numOrNull(row.discountPercent ?? row.discount);
 
-    const hasAny = type || articleId || articleTitleRaw || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
+    const hasAny = type || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
     if (!hasAny) continue;
 
     if (!type) {
@@ -525,13 +531,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     }
 
     if ((type === 'material' || type === 'service') && !articleId) {
-      // Hier machen wir es absichtlich HART: material/service braucht Artikel
-      errors.push({
-        sheet: 'Positionen',
-        row: excelRow,
-        field: 'articleId',
-        message: 'articleId ist Pflicht bei type=material/service (nutze Dropdown articleTitle oder trage die ID ein).'
-      });
+      errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service.' });
       continue;
     }
 
@@ -561,13 +561,19 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       warnings.push({ sheet: 'Positionen', row: excelRow, message: `Name war leer → automatisch gesetzt: "${name}".` });
     }
 
-    const item = { type, name, description: description || undefined, quantity: qty, unitName };
+    const item = {
+      type,
+      name,
+      description: description || undefined,
+      quantity: qty,
+      unitName
+    };
 
     if (articleId && (type === 'material' || type === 'service')) {
       item.id = articleId;
     }
 
-    // AUTO unitPrice
+    // --- AUTO unitPrice ---
     const canUseExcelPrice =
       unitPriceAmount !== null &&
       !(type === 'material' || type === 'service') &&
@@ -659,7 +665,9 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   return { ok: true, payload, summary };
 }
 
+// ------------------------------------------------------------
 // Idempotency (gegen 3x Erstellung)
+// ------------------------------------------------------------
 const inFlight = new Map();
 
 function hashRequest({ excelData, allowPriceOverride, finalize }) {
@@ -673,8 +681,13 @@ function hashRequest({ excelData, allowPriceOverride, finalize }) {
     .digest('hex');
 }
 
-// Dynamisches Template (10 Minuten TTL)
-const templateCache = { buffer: null, createdAt: 0 };
+// ------------------------------------------------------------
+// ✅ Dynamisches Template (10 Minuten TTL)
+// ------------------------------------------------------------
+const templateCache = {
+  buffer: null,
+  createdAt: 0
+};
 
 function buildTemplateWorkbook(articles) {
   const wb = XLSX.utils.book_new();
@@ -697,11 +710,12 @@ function buildTemplateWorkbook(articles) {
   });
   XLSX.utils.book_append_sheet(wb, shArticles, 'Artikel-Lookup');
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+  const angebot = [
     { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht Lexware taxConditions.taxType)' }
-  ]), 'Angebot');
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(angebot), 'Angebot');
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+  const kunde = [
     { Feld: 'kind', Wert: 'company', Hinweis: 'company oder person' },
     { Feld: 'name', Wert: '', Hinweis: 'Pflicht: Firmenname (company) oder Vollname (person)' },
     { Feld: 'email', Wert: '', Hinweis: 'Optional, aber hilfreich fürs Matching' },
@@ -712,29 +726,48 @@ function buildTemplateWorkbook(articles) {
     { Feld: 'countryCode', Wert: 'DE', Hinweis: 'ISO 3166-1 alpha-2, z.B. DE' },
     { Feld: 'phone', Wert: '', Hinweis: 'Optional' },
     { Feld: 'contactId', Wert: '', Hinweis: 'Optional: Lexware Contact ID, wenn du sie kennst' }
-  ]), 'Kunde');
-
-  const posHeader = ['pos','type','articleTitle','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'];
-  const posExample = [
-    { pos: 1, type: 'custom', articleTitle: '', articleId: '', name: 'DTF Druck Brust 10×8 cm', description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk', unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: '' },
-    { pos: 2, type: 'text', articleTitle: '', articleId: '', name: 'Lieferzeit / Hinweis', description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '', unitPriceAmount: '', taxRatePercentage: '', discountPercent: '' },
-    { pos: 3, type: 'material', articleTitle: '(aus Dropdown wählen)', articleId: '', name: '', description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '', taxRatePercentage: '', discountPercent: '' }
   ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(posExample, { header: posHeader }), 'Positionen');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kunde), 'Kunde');
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-    { Schritt: 1, Hinweis: 'Artikel-Lookup: articleTitle im Dropdown wählen oder articleId kopieren' },
+  const posHeader = [
+    'pos','type','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
+  ];
+  const posExample = [
+    {
+      pos: 1, type: 'custom', articleId: '', name: 'DTF Druck Brust 10×8 cm',
+      description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk',
+      unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
+    },
+    {
+      pos: 2, type: 'text', articleId: '', name: 'Lieferzeit / Hinweis',
+      description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '',
+      unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
+    },
+    {
+      pos: 3, type: 'material', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
+      description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '',
+      taxRatePercentage: '', discountPercent: ''
+    }
+  ];
+  const shPos = XLSX.utils.json_to_sheet(posExample, { header: posHeader });
+  XLSX.utils.book_append_sheet(wb, shPos, 'Positionen');
+
+  const help = [
+    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren' },
     { Schritt: 2, Hinweis: 'Angebot: taxType setzen (net/gross)' },
     { Schritt: 3, Hinweis: 'Kunde: name ist Pflicht' },
     { Schritt: 4, Hinweis: 'Positionen: type + quantity > 0 + unitName Pflicht (außer text)' },
-    { Schritt: 5, Hinweis: 'material/service: Artikel Pflicht (articleTitle oder articleId), Preis automatisch aus Artikelstamm' },
-    { Schritt: 6, Hinweis: 'custom ohne Artikel: unitPriceAmount Pflicht' }
-  ]), 'Anleitung');
+    { Schritt: 5, Hinweis: 'material/service: articleId Pflicht, Preis wird automatisch aus Artikelstamm gesetzt' },
+    { Schritt: 6, Hinweis: 'custom ohne articleId: unitPriceAmount Pflicht' }
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(help), 'Anleitung');
 
   return wb;
 }
 
+// ------------------------------------------------------------
 // API
+// ------------------------------------------------------------
 app.get('/api/ping', (req, res) => {
   ok(res, {
     status: 'OK',
@@ -744,11 +777,11 @@ app.get('/api/ping', (req, res) => {
     minIntervalMs: MIN_INTERVAL_MS,
     apiBaseUrl: API_BASE_URL,
     finalizeDefault: FINALIZE_DEFAULT,
-    templateTtlMs: TEMPLATE_TTL_MS
+    templateTtlMs: TEMPLATE_TTL_MS,
+    axiosTimeoutMs: AXIOS_TIMEOUT_MS
   });
 });
 
-// ✅ /api/articles?refresh=1 -> Cache sofort aktualisieren
 app.get('/api/articles', authMiddleware, async (req, res) => {
   try {
     if (!API_KEY) {
@@ -759,9 +792,9 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
         technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
       });
     }
-    const force = String(req.query.refresh || '').trim() === '1';
-    const list = await listAllArticlesCached(force);
-    ok(res, { status: 'SUCCESS', data: { count: list.length, refreshed: force, articles: list } });
+    const forceRefresh = String(req.query.refresh || '').trim() === '1';
+    const list = await listAllArticlesCached(forceRefresh);
+    ok(res, { status: 'SUCCESS', data: { count: list.length, articles: list } });
   } catch (err) {
     fail(res, {
       stage: 'articles',
@@ -772,7 +805,7 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ /api/template.xlsx?refresh=1 -> Cache + Template neu bauen
+// ✅ Dynamisches Template (auth + TTL 10min)
 app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
   try {
     if (!API_KEY) {
@@ -785,16 +818,14 @@ app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
       });
     }
 
-    const force = String(req.query.refresh || '').trim() === '1';
     const now = Date.now();
-
-    if (!force && templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
+    if (templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
       return res.status(200).send(templateCache.buffer);
     }
 
-    const articles = await listAllArticlesCached(force);
+    const articles = await listAllArticlesCached(false);
     const wb = buildTemplateWorkbook(articles);
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -963,17 +994,29 @@ app.get('/api/download-pdf', authMiddleware, async (req, res) => {
     });
 
     if (apiRes.status < 200 || apiRes.status >= 300) {
+      const tech = buildTechnical({ httpStatus: apiRes.status, raw: apiRes.data });
+
+      // ✅ Idiotensicher: Draft-PDF Problem klar melden
+      const msg = (tech?.raw && typeof tech.raw === 'object' && tech.raw.message) ? String(tech.raw.message) : '';
+      const isDraftPdf =
+        apiRes.status === 409 &&
+        msg.toLowerCase().includes('status') &&
+        msg.toLowerCase().includes('draft') &&
+        msg.toLowerCase().includes('cannot be downloaded');
+
       return res.status(200).json({
         ok: false,
         stage: 'lexware-pdf',
         status: apiRes.status === 429 ? 'RATE_LIMIT' : 'ERROR',
-        message: apiRes.status === 429 ? 'Rate limit exceeded' : 'Lexware PDF Fehler',
-        technical: buildTechnical({ httpStatus: apiRes.status, raw: apiRes.data })
+        message: isDraftPdf
+          ? 'PDF nicht verfügbar: Angebot ist im ENTWURF (draft). Bitte im Modus FINAL erstellen.'
+          : (apiRes.status === 429 ? 'Rate limit exceeded' : 'Lexware PDF Fehler'),
+        technical: tech
       });
     }
 
-    const contentType = apiRes.headers['content-type'] || 'application/pdf';
-    const disposition = apiRes.headers['content-disposition'] || 'attachment; filename="quotation.pdf"';
+    const contentType = apiRes.headers?.['content-type'] || 'application/pdf';
+    const disposition = apiRes.headers?.['content-disposition'] || 'attachment; filename="quotation.pdf"';
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', disposition);
@@ -989,5 +1032,6 @@ app.get('/api/download-pdf', authMiddleware, async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Server läuft auf Port', PORT));
