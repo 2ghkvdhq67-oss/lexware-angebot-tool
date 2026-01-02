@@ -31,6 +31,7 @@
   .small { font-size: 12px; }
   .inline-input { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .inputbox { border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; background: #fff; min-width: 280px; }
+  .banner { border: 1px solid #eee; border-left: 4px solid #111; border-radius: 10px; padding: 10px 12px; background: #fafafa; }
 </style>
 </head>
 <body>
@@ -44,7 +45,8 @@
     <div class="box">
       <label>Tool-Passwort</label><br>
       <input id="password" type="password" style="width:320px;" autocomplete="current-password" />
-      <div class="muted">Wird für API-Aufrufe und Downloads verwendet.</div>
+      <div id="pwHint" class="muted">Wird geprüft…</div>
+      <div class="muted">Tipp: Passwort wird nur in dieser Browser-Sitzung gespeichert (nicht dauerhaft).</div>
     </div>
 
     <!-- Excel -->
@@ -64,13 +66,13 @@
         </label>
       </div>
 
-      <div id="draftHint" class="muted" style="margin-top:8px; display:none;">
-        ⚠️ Entwurf gewählt: <b>PDF-Download ist bei Entwurf nicht möglich</b> (Lexware liefert 409).  
-        Wenn du PDF brauchst, bitte im Modus <b>Final</b> erstellen.
+      <div id="draftHint" class="banner muted" style="margin-top:10px; display:none;">
+        ⚠️ Entwurf gewählt: <b>PDF-Download ist bei Entwurf nicht möglich</b> (Lexware liefert 409).<br>
+        Wenn du PDF brauchst: bitte im Modus <b>Final</b> erstellen.
       </div>
 
-      <div class="muted">
-        Hinweis: <b>Ein Entwurf kann per API nicht nachträglich „finalisiert“ werden.</b>
+      <div class="muted" style="margin-top:8px;">
+        Hinweis: <b>Ein Entwurf kann per API nicht nachträglich „finalisiert“ werden.</b><br>
         Wenn du nach einem Entwurf später „Final“ erstellst, entsteht ein <b>neues Angebot</b> mit <b>neuer Angebotsnummer</b>.
       </div>
     </div>
@@ -79,7 +81,7 @@
     <div class="box">
       <div class="row">
         <button id="btnTest">Testmodus ausführen</button>
-        <button id="btnCreate" class="primary">Angebot erstellen</button>
+        <button id="btnCreate" class="primary">Final erstellen</button>
         <button id="btnPdf" disabled>PDF herunterladen</button>
         <button id="btnOpenLexware" disabled>In Lexware öffnen</button>
         <button id="btnReset" class="danger">Neue Sitzung / Reset</button>
@@ -113,9 +115,9 @@
         <button id="btnRefreshArticles" class="secondary">Artikel-Cache aktualisieren</button>
       </div>
       <div class="muted">
-        Auto = Template inkl. Artikel-Lookup aus Lexware (Cache/TTL).  
-        Statisch = Datei aus <span class="mono">/templates</span>.  
-        Wenn ein neuer Artikel nicht gefunden wird: „Artikel-Cache aktualisieren“, dann ggf. Auto-Template neu laden.
+        Auto = Template inkl. Artikel-Lookup aus Lexware (Cache/TTL).<br>
+        Statisch = Datei aus <span class="mono">/templates</span>.<br>
+        Wenn ein neuer Artikel nicht gefunden wird: „Artikel-Cache aktualisieren“, dann Auto-Template neu laden.
       </div>
     </div>
 
@@ -173,18 +175,20 @@ function setBusy(on) {
   busy = on;
   const disable = !!on;
 
-  document.getElementById("btnTest").disabled = disable;
-  document.getElementById("btnCreate").disabled = disable;
-  document.getElementById("btnTemplateAuto").disabled = disable;
-  document.getElementById("btnTemplateStatic").disabled = disable;
-  document.getElementById("btnRefreshArticles").disabled = disable;
-  document.getElementById("btnReset").disabled = disable;
+  // Aktionen
+  document.getElementById("btnTest").disabled = disable || !canUseActions();
+  document.getElementById("btnCreate").disabled = disable || !canUseActions();
+  document.getElementById("btnTemplateAuto").disabled = disable || !canUseTemplate();
+  document.getElementById("btnTemplateStatic").disabled = disable; // static geht auch ohne pw, aber wir lassen sauber
+  document.getElementById("btnRefreshArticles").disabled = disable || !canUseTemplate();
+  document.getElementById("btnReset").disabled = disable ? true : false;
 
-  document.getElementById("file").disabled = disable;
-  document.getElementById("password").disabled = disable;
-  document.getElementById("override").disabled = disable;
-  document.getElementById("modeFinal").disabled = disable;
-  document.getElementById("modeDraft").disabled = disable;
+  // Inputs
+  document.getElementById("file").disabled = disable || !canPickFile();
+  document.getElementById("password").disabled = disable ? true : false;
+  document.getElementById("override").disabled = disable || !canUseActions();
+  document.getElementById("modeFinal").disabled = disable || !canUseActions(false);
+  document.getElementById("modeDraft").disabled = disable || !canUseActions(false);
 
   document.getElementById("busyHint").style.display = disable ? "block" : "none";
 }
@@ -196,14 +200,21 @@ function getFinalizeBoolFromMode() {
   return document.getElementById("modeFinal").checked; // final => true
 }
 
+function updateCreateButtonLabel() {
+  const btn = document.getElementById("btnCreate");
+  btn.textContent = isDraftMode() ? "Entwurf erstellen" : "Final erstellen";
+}
+
 function updateDraftUi() {
   const hint = document.getElementById("draftHint");
   hint.style.display = isDraftMode() ? "block" : "none";
 
-  // wenn Draft aktiv: PDF deaktivieren (auch wenn es eine ID gibt)
+  // PDF in Draft immer aus
   const btnPdf = document.getElementById("btnPdf");
   if (isDraftMode()) btnPdf.disabled = true;
   else btnPdf.disabled = !lastOfferId;
+
+  updateCreateButtonLabel();
 }
 
 function updateLastOfferUi() {
@@ -216,7 +227,7 @@ function updateLastOfferUi() {
     input.value = lastOfferId;
     btnCopy.disabled = false;
     btnOpen.disabled = false;
-    btnPdf.disabled = isDraftMode(); // Draft => disabled
+    btnPdf.disabled = isDraftMode();
   } else {
     input.value = "";
     btnCopy.disabled = true;
@@ -225,23 +236,61 @@ function updateLastOfferUi() {
   }
 }
 
-function validateBeforeAction({ needsExcel=true, needsPasswordMaybe=true } = {}) {
-  if (needsExcel) {
-    const fileInput = document.getElementById("file");
-    if (!fileInput.files || !fileInput.files[0]) {
-      logLine("❌ Bitte zuerst eine Excel-Datei auswählen.", "err");
-      return false;
-    }
+function selectedFileExists() {
+  const fileInput = document.getElementById("file");
+  return !!(fileInput.files && fileInput.files[0]);
+}
+
+function passwordOkForProtected() {
+  if (!pingInfo) return false;
+  if (!pingInfo.passwordProtected) return true;
+  return !!document.getElementById("password").value;
+}
+
+function canPickFile() {
+  // Passwort zuerst: wenn geschützt und kein Passwort, Datei deaktivieren
+  if (!pingInfo) return false;
+  if (pingInfo.passwordProtected && !document.getElementById("password").value) return false;
+  return true;
+}
+
+function canUseActions(requireFile = true) {
+  if (!pingInfo) return false;
+  if (!passwordOkForProtected()) return false;
+  if (requireFile && !selectedFileExists()) return false;
+  return true;
+}
+
+function canUseTemplate() {
+  if (!pingInfo) return false;
+  if (!passwordOkForProtected()) return false;
+  return true;
+}
+
+function updateGuards() {
+  // Hinweistext Passwort
+  const pwHint = document.getElementById("pwHint");
+  if (!pingInfo) {
+    pwHint.textContent = "Wird geprüft…";
+  } else if (!pingInfo.passwordProtected) {
+    pwHint.textContent = "Passwortschutz: aus (kein Passwort nötig).";
+  } else {
+    pwHint.textContent = document.getElementById("password").value
+      ? "Passwortschutz: aktiv (Passwort gesetzt ✅)"
+      : "Passwortschutz: aktiv → bitte Passwort eingeben, dann Excel auswählen.";
   }
 
-  if (needsPasswordMaybe && pingInfo && pingInfo.passwordProtected) {
-    const pw = document.getElementById("password").value;
-    if (!pw) {
-      logLine("❌ Passwortschutz ist aktiv: Bitte Tool-Passwort eingeben.", "err");
-      return false;
-    }
-  }
-  return true;
+  // Aktionen sperren/freigeben
+  document.getElementById("file").disabled = !canPickFile() || busy;
+  document.getElementById("btnTest").disabled = !canUseActions() || busy;
+  document.getElementById("btnCreate").disabled = !canUseActions() || busy;
+
+  document.getElementById("btnTemplateAuto").disabled = !canUseTemplate() || busy;
+  document.getElementById("btnRefreshArticles").disabled = !canUseTemplate() || busy;
+
+  // PDF/Open abhängig von lastOfferId und Draft
+  updateLastOfferUi();
+  updateDraftUi();
 }
 
 async function readFileBase64(file) {
@@ -288,9 +337,54 @@ function getAuthHeaders() {
   return headers;
 }
 
+// ✅ Smart: erkennt JSON-Fehler vs Datei (Blob) und loggt sauber
+async function downloadSmart({ url, filenameFallback, logLabel }) {
+  try {
+    const res = await fetch(url, { headers: { ...getAuthHeaders() } });
+
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+    // JSON Fehler (oder Backend liefert {ok:false})
+    if (ct.includes("application/json")) {
+      const data = await res.json();
+      logLine(`❌ ${logLabel}: ${data.message || "Fehler"}`, "err");
+      if (data.technical) logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
+
+      // Spezialfall: Draft PDF 409
+      if (data.stage === "lexware-pdf" && data.technical && data.technical.httpStatus === 409) {
+        logLine("➡️ PDF ist nur bei FINAL-Angeboten möglich. Dieses Angebot ist im Status ENTWURF.", "warn");
+        logLine("➡️ Lösung: Angebot im Modus „Final“ erstellen.", "warn");
+      }
+      return;
+    }
+
+    // Datei
+    const blob = await res.blob();
+    const disp = res.headers.get("content-disposition") || "";
+    let fname = filenameFallback;
+
+    // Versuche filename aus Content-Disposition
+    const m = disp.match(/filename\*?=(?:UTF-8''|")?([^\";]+)"?/i);
+    if (m && m[1]) fname = decodeURIComponent(m[1].replace(/"/g, "").trim());
+
+    const a = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    a.href = objectUrl;
+    a.download = fname || filenameFallback;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+
+    logLine(`✅ ${logLabel}: Download gestartet (${fname}).`, "ok");
+  } catch (e) {
+    console.error(e);
+    logLine(`❌ ${logLabel}: Download fehlgeschlagen (Netzwerk/Browser).`, "err");
+  }
+}
+
 async function callApi(endpoint, extraBody = {}) {
   const fileInput = document.getElementById("file");
-  const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
 
   const file = fileInput.files[0];
@@ -301,7 +395,7 @@ async function callApi(endpoint, extraBody = {}) {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ excelData, password, allowPriceOverride, ...extraBody })
+      body: JSON.stringify({ excelData, allowPriceOverride, ...extraBody })
     });
     data = await res.json();
   } catch (e) {
@@ -312,13 +406,6 @@ async function callApi(endpoint, extraBody = {}) {
 
   if (!data.ok) {
     logLine(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Keine genaue Fehlermeldung vorhanden."}`, "err");
-
-    // ✅ PDF-Draft Spezialfall verständlich machen
-    if (data.stage === "lexware-pdf" && data.technical && data.technical.httpStatus === 409) {
-      logLine("➡️ PDF ist nur bei FINAL-Angeboten möglich. Dieses Angebot ist im Status ENTWURF.", "warn");
-      logLine("➡️ Lösung: Angebot im Modus „Final“ erstellen (Entwurf kann per API nicht nachträglich finalisiert werden).", "warn");
-    }
-
     if (data.technical) logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
     if (data.data && data.data.summary) {
       logErrorsFromSummary(data.data.summary);
@@ -343,13 +430,21 @@ async function callApi(endpoint, extraBody = {}) {
   return data;
 }
 
-// Events: Mode change
-document.getElementById("modeFinal").addEventListener("change", () => { updateDraftUi(); updateLastOfferUi(); });
-document.getElementById("modeDraft").addEventListener("change", () => { updateDraftUi(); updateLastOfferUi(); });
+// Mode change
+document.getElementById("modeFinal").addEventListener("change", () => { updateDraftUi(); updateGuards(); });
+document.getElementById("modeDraft").addEventListener("change", () => { updateDraftUi(); updateGuards(); });
 
+// Password changes (Session Storage)
+document.getElementById("password").addEventListener("input", () => {
+  const pw = document.getElementById("password").value;
+  sessionStorage.setItem("tool_password", pw || "");
+  updateGuards();
+});
+
+// Buttons
 document.getElementById("btnTest").onclick = async () => {
   if (busy) return;
-  if (!validateBeforeAction({ needsExcel:true, needsPasswordMaybe:true })) return;
+  if (!canUseActions()) { logLine("❌ Bitte zuerst Passwort (falls aktiv) und Excel auswählen.", "err"); return; }
 
   setBusy(true);
   try {
@@ -357,12 +452,13 @@ document.getElementById("btnTest").onclick = async () => {
     await callApi("/api/test-excel");
   } finally {
     setBusy(false);
+    updateGuards();
   }
 };
 
 document.getElementById("btnCreate").onclick = async () => {
   if (busy) return;
-  if (!validateBeforeAction({ needsExcel:true, needsPasswordMaybe:true })) return;
+  if (!canUseActions()) { logLine("❌ Bitte zuerst Passwort (falls aktiv) und Excel auswählen.", "err"); return; }
 
   const finalize = getFinalizeBoolFromMode();
 
@@ -372,28 +468,32 @@ document.getElementById("btnCreate").onclick = async () => {
     await callApi("/api/create-offer", { finalize });
   } finally {
     setBusy(false);
+    updateGuards();
   }
 };
 
-document.getElementById("btnTemplateAuto").onclick = () => {
+document.getElementById("btnTemplateAuto").onclick = async () => {
   if (busy) return;
-  if (!validateBeforeAction({ needsExcel:false, needsPasswordMaybe:true })) return;
+  if (!canUseTemplate()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
 
-  const pw = document.getElementById("password").value;
-  const url = pw ? `/api/template.xlsx?password=${encodeURIComponent(pw)}` : `/api/template.xlsx`;
   logLine("Lade Template (Auto/TTL)…", "info");
-  window.location.href = url;
+  await downloadSmart({
+    url: "/api/template.xlsx",
+    filenameFallback: "lexware_template.xlsx",
+    logLabel: "Template (Auto/TTL)"
+  });
 };
 
 document.getElementById("btnTemplateStatic").onclick = () => {
   if (busy) return;
   logLine("Lade Template (statisch)…", "info");
+  // static ist wirklich statisch – normaler Download reicht
   window.location.href = `/templates/lexware_template.xlsx`;
 };
 
 document.getElementById("btnRefreshArticles").onclick = async () => {
   if (busy) return;
-  if (!validateBeforeAction({ needsExcel:false, needsPasswordMaybe:true })) return;
+  if (!canUseTemplate()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
 
   setBusy(true);
   try {
@@ -407,33 +507,31 @@ document.getElementById("btnRefreshArticles").onclick = async () => {
     }
     const count = data.data?.count ?? "?";
     logLine(`✅ Artikel-Cache aktualisiert. Artikel gefunden: ${count}`, "ok");
-    logLine("Tipp: Wenn Dropdown/Template veraltet ist, Template (Auto/TTL) erneut laden.", "info");
+    logLine("Tipp: Auto-Template neu laden, wenn Dropdown/Lookup veraltet war.", "info");
   } catch {
     logLine("❌ Fehler beim Aktualisieren des Artikel-Caches.", "err");
   } finally {
     setBusy(false);
+    updateGuards();
   }
 };
 
-document.getElementById("btnPdf").onclick = () => {
-  if (!lastOfferId) { logLine("Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
-  if (isDraftMode()) {
-    logLine("❌ PDF ist bei ENTWURF nicht möglich. Bitte im Modus FINAL erstellen.", "err");
-    return;
-  }
-  if (!validateBeforeAction({ needsExcel:false, needsPasswordMaybe:true })) return;
-
-  const pw = document.getElementById("password").value;
-  const url = pw
-    ? `/api/download-pdf?id=${encodeURIComponent(lastOfferId)}&password=${encodeURIComponent(pw)}`
-    : `/api/download-pdf?id=${encodeURIComponent(lastOfferId)}`;
+document.getElementById("btnPdf").onclick = async () => {
+  if (!lastOfferId) { logLine("❌ Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
+  if (isDraftMode()) { logLine("❌ PDF ist bei ENTWURF nicht möglich. Bitte im Modus FINAL erstellen.", "err"); return; }
+  if (!passwordOkForProtected()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
+  if (busy) return;
 
   logLine("Lade PDF…", "info");
-  window.location.href = url;
+  await downloadSmart({
+    url: `/api/download-pdf?id=${encodeURIComponent(lastOfferId)}`,
+    filenameFallback: "quotation.pdf",
+    logLabel: "PDF"
+  });
 };
 
 document.getElementById("btnOpenLexware").onclick = () => {
-  if (!lastOfferId) { logLine("Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
+  if (!lastOfferId) { logLine("❌ Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
   const url = lexwareOfferUrl(lastOfferId);
   logLine("Öffne Angebot in Lexware (neuer Tab)…", "info");
   window.open(url, "_blank", "noopener,noreferrer");
@@ -454,6 +552,7 @@ document.getElementById("btnCopyId").onclick = async () => {
 
 document.getElementById("btnReset").onclick = () => {
   if (busy) return;
+
   document.getElementById("log").innerHTML = "";
   lastOfferId = null;
   updateLastOfferUi();
@@ -466,6 +565,7 @@ document.getElementById("btnReset").onclick = () => {
   document.getElementById("fileInfo").textContent = "Noch keine Datei ausgewählt.";
 
   updateDraftUi();
+  updateGuards();
   logLine("🔄 Neue Sitzung gestartet: Protokoll, Datei und letzte Angebots-ID wurden zurückgesetzt.", "ok");
 };
 
@@ -474,12 +574,14 @@ document.getElementById("file").addEventListener("change", () => {
   const info = document.getElementById("fileInfo");
   if (!fileInput.files || !fileInput.files[0]) {
     info.textContent = "Noch keine Datei ausgewählt.";
+    updateGuards();
     return;
   }
   const f = fileInput.files[0];
   const sizeKb = Math.round((f.size || 0) / 1024);
   info.textContent = `Ausgewählt: ${f.name} (${sizeKb} KB)`;
   logLine(`Excel ausgewählt: ${f.name} (${sizeKb} KB)`, "info");
+  updateGuards();
 });
 
 function setStatus(dotId, textId, state, text) {
@@ -492,11 +594,15 @@ function setStatus(dotId, textId, state, text) {
 
 async function refreshPing() {
   try {
-    const r = await fetch("/api/ping", { headers: { ...getAuthHeaders() } });
+    const r = await fetch("/api/ping");
     const d = await r.json();
     pingInfo = d;
 
-    if (!d.ok) { setStatus("dotBackend","sBackend","warn","Backend: antwortet (ok=false)"); return; }
+    if (!d.ok) {
+      setStatus("dotBackend","sBackend","warn","Backend: antwortet (ok=false)");
+      updateGuards();
+      return;
+    }
 
     setStatus("dotBackend","sBackend","ok","Backend: OK");
     if (d.passwordProtected) setStatus("dotAuth","sAuth","warn",`Passwortschutz: aktiv (${d.passwordMode || "?"})`);
@@ -509,19 +615,29 @@ async function refreshPing() {
     document.getElementById("sysDetails").textContent =
       `API: ${d.apiBaseUrl} • Finalize-Default: ${d.finalizeDefault ? "true" : "false"} • allowPriceOverrideDefault: ${d.allowPriceOverrideDefault ? "true" : "false"}`;
 
+    updateGuards();
   } catch {
     setStatus("dotBackend","sBackend","err","Backend: nicht erreichbar");
     setStatus("dotAuth","sAuth","","Passwortschutz: ?");
     setStatus("dotTtl","sTtl","","Template TTL: ?");
     setStatus("dotRate","sRate","","Rate-Limit Puffer: ?");
     document.getElementById("sysDetails").textContent = "❌ Backend nicht erreichbar.";
+    pingInfo = null;
+    updateGuards();
   }
 }
 
-updateLastOfferUi();
-updateDraftUi();
-refreshPing();
-setInterval(refreshPing, 30000);
+// Init
+(function init() {
+  // Passwort aus Session holen (nur für diese Sitzung)
+  const saved = sessionStorage.getItem("tool_password");
+  if (saved) document.getElementById("password").value = saved;
+
+  updateLastOfferUi();
+  updateDraftUi();
+  refreshPing();
+  setInterval(refreshPing, 30000);
+})();
 </script>
 
 </body>
