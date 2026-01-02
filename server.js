@@ -332,10 +332,23 @@ function round2(n) {
 function isBadExcelArticleId(v) {
   const s = String(v || '').trim();
   if (!s) return true;
-  // Excel Fehlerwerte abfangen
   if (s === '#NAME?' || s === '#NAME' || s.toLowerCase() === '#name?') return true;
   if (s.startsWith('#')) return true;
   return false;
+}
+
+function getRowArticleNumber(row) {
+  const v =
+    row.articleNumber ??
+    row.articleNo ??
+    row.articleNr ??
+    row.articlenr ??
+    row.artikelnummer ??
+    row.Artikelnummer ??
+    row.ArticleNumber ??
+    row.ArticleNo ??
+    row.ArticleNr;
+  return String(v || '').trim();
 }
 
 // ------------------------------------------------------------
@@ -494,27 +507,43 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   };
 
   // --------------------------------------------------------
-  // ✅ Wie früher: articleTitle -> articleId Mapping (einmalig)
+  // ✅ Mapping: articleNumber -> articleId (priorität) -> dann articleTitle
   // --------------------------------------------------------
-  const needsTitleMapping = posRows.some(r => {
+  const needsMapping = posRows.some(r => {
     const type = toLowerTrim(r.type);
     const title = String(r.articleTitle || r.articleText || r.article || '').trim();
+    const nr = getRowArticleNumber(r);
     const id = String(r.articleId || r.articleID || '').trim();
     const bad = isBadExcelArticleId(id);
-    return !!title && bad && (type === 'material' || type === 'service' || type === 'custom');
+    return bad && (type === 'material' || type === 'service' || type === 'custom') && (!!title || !!nr);
   });
 
   let titleToIds = null;
-  if (needsTitleMapping) {
+  let numberToIds = null;
+
+  if (needsMapping) {
     const articles = await listAllArticlesCached(false);
-    titleToIds = new Map(); // key lower-title -> array of ids
+
+    titleToIds = new Map();   // lower(title) -> [id]
+    numberToIds = new Map();  // lower(articleNumber) -> [id]
+
     for (const a of (articles || [])) {
-      const t = String(a.title || '').trim();
       const id = String(a.id || '').trim();
-      if (!t || !id) continue;
-      const key = t.toLowerCase();
-      if (!titleToIds.has(key)) titleToIds.set(key, []);
-      titleToIds.get(key).push(id);
+      const t = String(a.title || '').trim();
+      const n = String(a.articleNumber || '').trim();
+
+      if (id) {
+        if (t) {
+          const k = t.toLowerCase();
+          if (!titleToIds.has(k)) titleToIds.set(k, []);
+          titleToIds.get(k).push(id);
+        }
+        if (n) {
+          const k = n.toLowerCase();
+          if (!numberToIds.has(k)) numberToIds.set(k, []);
+          numberToIds.get(k).push(id);
+        }
+      }
     }
   }
 
@@ -527,8 +556,8 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const type = toLowerTrim(row.type);
 
     const articleTitle = String(row.articleTitle || row.articleText || row.article || '').trim();
+    const articleNumber = getRowArticleNumber(row);
 
-    // IMPORTANT: articleId kann #NAME? sein -> als "leer" behandeln
     let articleId = String(row.articleId || row.articleID || '').trim();
     if (isBadExcelArticleId(articleId)) articleId = '';
 
@@ -542,7 +571,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const taxRatePercentage = numOrNull(row.taxRatePercentage ?? row.taxRate ?? row.tax);
     const discountPercent = numOrNull(row.discountPercent ?? row.discount);
 
-    const hasAny = type || articleTitle || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
+    const hasAny = type || articleTitle || articleNumber || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
     if (!hasAny) continue;
 
     if (!type) {
@@ -552,24 +581,44 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
     byType[type] = (byType[type] || 0) + 1;
 
-    // ✅ articleTitle -> articleId automatisch setzen (wie früher)
-    if (!articleId && articleTitle && titleToIds) {
-      const key = articleTitle.toLowerCase();
-      const hits = titleToIds.get(key) || [];
+    // ✅ Auto-map (1) articleNumber, (2) articleTitle
+    if (!articleId && (type === 'material' || type === 'service' || type === 'custom') && (numberToIds || titleToIds)) {
+      // (1) via articleNumber
+      if (articleNumber && numberToIds) {
+        const hits = numberToIds.get(articleNumber.toLowerCase()) || [];
+        if (hits.length === 1) {
+          articleId = hits[0];
+          warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleNumber "${articleNumber}" → articleId automatisch gesetzt.` });
+        } else if (hits.length > 1) {
+          errors.push({
+            sheet: 'Positionen',
+            row: excelRow,
+            field: 'articleNumber',
+            message: `articleNumber "${articleNumber}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleId direkt setzen.`
+          });
+          continue;
+        } else {
+          warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleNumber "${articleNumber}" konnte nicht gemappt werden (kein Treffer).` });
+        }
+      }
 
-      if (hits.length === 1) {
-        articleId = hits[0];
-        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
-      } else if (hits.length > 1) {
-        errors.push({
-          sheet: 'Positionen',
-          row: excelRow,
-          field: 'articleTitle',
-          message: `articleTitle "${articleTitle}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleId direkt setzen.`
-        });
-        continue;
-      } else {
-        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
+      // (2) via articleTitle (nur wenn immer noch leer)
+      if (!articleId && articleTitle && titleToIds) {
+        const hits = titleToIds.get(articleTitle.toLowerCase()) || [];
+        if (hits.length === 1) {
+          articleId = hits[0];
+          warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
+        } else if (hits.length > 1) {
+          errors.push({
+            sheet: 'Positionen',
+            row: excelRow,
+            field: 'articleTitle',
+            message: `articleTitle "${articleTitle}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleNumber oder articleId setzen.`
+          });
+          continue;
+        } else {
+          warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
+        }
       }
     }
 
@@ -589,7 +638,6 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       continue;
     }
 
-    // material/service: articleId Pflicht (jetzt wird er ja vorher aus articleTitle gefüllt)
     if ((type === 'material' || type === 'service') && !articleId) {
       errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service.' });
       continue;
@@ -790,35 +838,31 @@ function buildTemplateWorkbook(articles) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kunde), 'Kunde');
 
   const posHeader = [
-    'pos','type','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
+    'pos','type','articleTitle','articleNumber','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
   ];
   const posExample = [
     {
-      pos: 1, type: 'custom', articleId: '', name: 'DTF Druck Brust 10×8 cm',
-      description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk',
-      unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
+      pos: 1, type: 'material', articleTitle: 'Beispiel-Artikel', articleNumber: 'ABC-123', articleId: '',
+      name: '', description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
     },
     {
-      pos: 2, type: 'text', articleId: '', name: 'Lieferzeit / Hinweis',
-      description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '',
-      unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
+      pos: 2, type: 'custom', articleTitle: '', articleNumber: '', articleId: '',
+      name: 'DTF Druck', description: 'Positionierung', quantity: 10, unitName: 'Stk', unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
     },
     {
-      pos: 3, type: 'material', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
-      description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '',
-      taxRatePercentage: '', discountPercent: ''
+      pos: 3, type: 'text', articleTitle: '', articleNumber: '', articleId: '',
+      name: 'Hinweis', description: 'Druckfreigabe erforderlich.', quantity: '', unitName: '', unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
     }
   ];
   const shPos = XLSX.utils.json_to_sheet(posExample, { header: posHeader });
   XLSX.utils.book_append_sheet(wb, shPos, 'Positionen');
 
   const help = [
-    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren' },
+    { Schritt: 1, Hinweis: 'Material/Service: articleNumber ODER articleTitle setzen → Server mappt automatisch auf articleId. (Fallback: articleId direkt setzen)' },
     { Schritt: 2, Hinweis: 'Angebot: taxType setzen (net/gross)' },
     { Schritt: 3, Hinweis: 'Kunde: name ist Pflicht' },
     { Schritt: 4, Hinweis: 'Positionen: type + quantity > 0 + unitName Pflicht (außer text)' },
-    { Schritt: 5, Hinweis: 'material/service: articleId Pflicht, Preis wird automatisch aus Artikelstamm gesetzt' },
-    { Schritt: 6, Hinweis: 'custom ohne articleId: unitPriceAmount Pflicht' }
+    { Schritt: 5, Hinweis: 'Preis: material/service immer aus Artikelstamm; custom ohne articleId braucht unitPriceAmount' }
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(help), 'Anleitung');
 
