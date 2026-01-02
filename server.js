@@ -278,7 +278,6 @@ async function lexwareRequest({ method, url, headers, data, responseType, accept
       const wait = Math.min(12000, base + jitter);
       await new Promise(r => setTimeout(r, wait));
     } catch (err) {
-      // wichtig: immer kontrolliert zurückgeben (statt "hängen")
       const status = err?.response?.status || 0;
       const raw = err?.response?.data || { message: 'NETWORK_OR_TIMEOUT', detail: err?.message || 'request failed' };
       return { status, data: raw, headers: err?.response?.headers || {} };
@@ -328,6 +327,15 @@ function toLowerTrim(v) {
 
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+function isBadExcelArticleId(v) {
+  const s = String(v || '').trim();
+  if (!s) return true;
+  // Excel Fehlerwerte abfangen
+  if (s === '#NAME?' || s === '#NAME' || s.toLowerCase() === '#name?') return true;
+  if (s.startsWith('#')) return true;
+  return false;
 }
 
 // ------------------------------------------------------------
@@ -485,6 +493,31 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     phone: String(kunde.phone || '').trim() || undefined
   };
 
+  // --------------------------------------------------------
+  // ✅ Wie früher: articleTitle -> articleId Mapping (einmalig)
+  // --------------------------------------------------------
+  const needsTitleMapping = posRows.some(r => {
+    const type = toLowerTrim(r.type);
+    const title = String(r.articleTitle || r.articleText || r.article || '').trim();
+    const id = String(r.articleId || r.articleID || '').trim();
+    const bad = isBadExcelArticleId(id);
+    return !!title && bad && (type === 'material' || type === 'service' || type === 'custom');
+  });
+
+  let titleToIds = null;
+  if (needsTitleMapping) {
+    const articles = await listAllArticlesCached(false);
+    titleToIds = new Map(); // key lower-title -> array of ids
+    for (const a of (articles || [])) {
+      const t = String(a.title || '').trim();
+      const id = String(a.id || '').trim();
+      if (!t || !id) continue;
+      const key = t.toLowerCase();
+      if (!titleToIds.has(key)) titleToIds.set(key, []);
+      titleToIds.get(key).push(id);
+    }
+  }
+
   const lineItems = [];
 
   for (let i = 0; i < posRows.length; i++) {
@@ -492,7 +525,12 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const excelRow = i + 2;
 
     const type = toLowerTrim(row.type);
-    const articleId = String(row.articleId || row.articleID || '').trim();
+
+    const articleTitle = String(row.articleTitle || row.articleText || row.article || '').trim();
+
+    // IMPORTANT: articleId kann #NAME? sein -> als "leer" behandeln
+    let articleId = String(row.articleId || row.articleID || '').trim();
+    if (isBadExcelArticleId(articleId)) articleId = '';
 
     let name = String(row.name || '').trim();
     const description = String(row.description || '').trim();
@@ -504,7 +542,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const taxRatePercentage = numOrNull(row.taxRatePercentage ?? row.taxRate ?? row.tax);
     const discountPercent = numOrNull(row.discountPercent ?? row.discount);
 
-    const hasAny = type || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
+    const hasAny = type || articleTitle || articleId || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
     if (!hasAny) continue;
 
     if (!type) {
@@ -513,6 +551,27 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     }
 
     byType[type] = (byType[type] || 0) + 1;
+
+    // ✅ articleTitle -> articleId automatisch setzen (wie früher)
+    if (!articleId && articleTitle && titleToIds) {
+      const key = articleTitle.toLowerCase();
+      const hits = titleToIds.get(key) || [];
+
+      if (hits.length === 1) {
+        articleId = hits[0];
+        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
+      } else if (hits.length > 1) {
+        errors.push({
+          sheet: 'Positionen',
+          row: excelRow,
+          field: 'articleTitle',
+          message: `articleTitle "${articleTitle}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleId direkt setzen.`
+        });
+        continue;
+      } else {
+        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
+      }
+    }
 
     if (type === 'text') {
       const txtName = name || description || `Hinweis ${excelRow}`;
@@ -530,6 +589,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       continue;
     }
 
+    // material/service: articleId Pflicht (jetzt wird er ja vorher aus articleTitle gefüllt)
     if ((type === 'material' || type === 'service') && !articleId) {
       errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service.' });
       continue;
@@ -711,7 +771,7 @@ function buildTemplateWorkbook(articles) {
   XLSX.utils.book_append_sheet(wb, shArticles, 'Artikel-Lookup');
 
   const angebot = [
-    { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht Lexware taxConditions.taxType)' }
+    { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht taxConditions.taxType)' }
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(angebot), 'Angebot');
 
@@ -996,7 +1056,6 @@ app.get('/api/download-pdf', authMiddleware, async (req, res) => {
     if (apiRes.status < 200 || apiRes.status >= 300) {
       const tech = buildTechnical({ httpStatus: apiRes.status, raw: apiRes.data });
 
-      // ✅ Idiotensicher: Draft-PDF Problem klar melden
       const msg = (tech?.raw && typeof tech.raw === 'object' && tech.raw.message) ? String(tech.raw.message) : '';
       const isDraftPdf =
         apiRes.status === 409 &&
