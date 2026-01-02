@@ -40,18 +40,21 @@
 <div class="split">
   <div class="col">
 
+    <!-- Passwort -->
     <div class="box">
       <label>Tool-Passwort</label><br>
       <input id="password" type="password" style="width:320px;" autocomplete="current-password" />
       <div class="muted">Wird für API-Aufrufe und Downloads verwendet.</div>
     </div>
 
+    <!-- Excel -->
     <div class="box">
       <label>Excel-Datei (.xlsx)</label><br>
       <input id="file" type="file" accept=".xlsx" />
       <div id="fileInfo" class="muted">Noch keine Datei ausgewählt.</div>
     </div>
 
+    <!-- Optionen -->
     <div class="box">
       <div class="row">
         <label class="pill"><input type="radio" name="mode" id="modeFinal" value="final" checked /> Final (fertig)</label>
@@ -60,23 +63,19 @@
           <input id="override" type="checkbox" /> Artikelpreis überschreiben erlauben
         </label>
       </div>
+
+      <div id="draftHint" class="muted" style="margin-top:8px; display:none;">
+        ⚠️ Entwurf gewählt: <b>PDF-Download ist bei Entwurf nicht möglich</b> (Lexware liefert 409).  
+        Wenn du PDF brauchst, bitte im Modus <b>Final</b> erstellen.
+      </div>
+
       <div class="muted">
         Hinweis: <b>Ein Entwurf kann per API nicht nachträglich „finalisiert“ werden.</b>
         Wenn du nach einem Entwurf später „Final“ erstellst, entsteht ein <b>neues Angebot</b> mit <b>neuer Angebotsnummer</b>.
       </div>
     </div>
 
-    <div class="box">
-      <div class="row">
-        <button id="btnTemplateAuto" class="secondary">Template herunterladen (Auto / TTL)</button>
-        <button id="btnTemplateStatic" class="secondary">Template herunterladen (statisch)</button>
-        <button id="btnRefreshArticles" class="secondary">Artikel-Cache aktualisieren</button>
-      </div>
-      <div class="muted">
-        Wenn ein neu angelegter Artikel (z.B. „Testdruck“) nicht gefunden wird: „Artikel-Cache aktualisieren“, dann Test erneut.
-      </div>
-    </div>
-
+    <!-- Aktionen -->
     <div class="box">
       <div class="row">
         <button id="btnTest">Testmodus ausführen</button>
@@ -105,6 +104,21 @@
       </div>
     </div>
 
+    <!-- ✅ TEMPLATE BEREICH GANZ NACH UNTEN -->
+    <div class="box">
+      <strong>Template</strong>
+      <div class="row" style="margin-top:10px;">
+        <button id="btnTemplateAuto" class="secondary">Template herunterladen (Auto / TTL)</button>
+        <button id="btnTemplateStatic" class="secondary">Template herunterladen (statisch)</button>
+        <button id="btnRefreshArticles" class="secondary">Artikel-Cache aktualisieren</button>
+      </div>
+      <div class="muted">
+        Auto = Template inkl. Artikel-Lookup aus Lexware (Cache/TTL).  
+        Statisch = Datei aus <span class="mono">/templates</span>.  
+        Wenn ein neuer Artikel nicht gefunden wird: „Artikel-Cache aktualisieren“, dann ggf. Auto-Template neu laden.
+      </div>
+    </div>
+
   </div>
 
   <div class="col">
@@ -128,7 +142,6 @@
 
 <script>
 let lastOfferId = null;
-let lastMode = "final";
 let pingInfo = null;
 let busy = false;
 
@@ -176,6 +189,23 @@ function setBusy(on) {
   document.getElementById("busyHint").style.display = disable ? "block" : "none";
 }
 
+function isDraftMode() {
+  return document.getElementById("modeDraft").checked;
+}
+function getFinalizeBoolFromMode() {
+  return document.getElementById("modeFinal").checked; // final => true
+}
+
+function updateDraftUi() {
+  const hint = document.getElementById("draftHint");
+  hint.style.display = isDraftMode() ? "block" : "none";
+
+  // wenn Draft aktiv: PDF deaktivieren (auch wenn es eine ID gibt)
+  const btnPdf = document.getElementById("btnPdf");
+  if (isDraftMode()) btnPdf.disabled = true;
+  else btnPdf.disabled = !lastOfferId;
+}
+
 function updateLastOfferUi() {
   const input = document.getElementById("lastOfferId");
   const btnCopy = document.getElementById("btnCopyId");
@@ -185,8 +215,8 @@ function updateLastOfferUi() {
   if (lastOfferId) {
     input.value = lastOfferId;
     btnCopy.disabled = false;
-    btnPdf.disabled = false;
     btnOpen.disabled = false;
+    btnPdf.disabled = isDraftMode(); // Draft => disabled
   } else {
     input.value = "";
     btnCopy.disabled = true;
@@ -251,13 +281,6 @@ function logWarningsFromSummary(summary) {
   });
 }
 
-function getMode() {
-  return document.getElementById("modeDraft").checked ? "draft" : "final";
-}
-function getFinalizeBoolFromMode(mode) {
-  return mode === "final";
-}
-
 function getAuthHeaders() {
   const password = document.getElementById("password").value;
   const headers = {};
@@ -289,6 +312,13 @@ async function callApi(endpoint, extraBody = {}) {
 
   if (!data.ok) {
     logLine(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Keine genaue Fehlermeldung vorhanden."}`, "err");
+
+    // ✅ PDF-Draft Spezialfall verständlich machen
+    if (data.stage === "lexware-pdf" && data.technical && data.technical.httpStatus === 409) {
+      logLine("➡️ PDF ist nur bei FINAL-Angeboten möglich. Dieses Angebot ist im Status ENTWURF.", "warn");
+      logLine("➡️ Lösung: Angebot im Modus „Final“ erstellen (Entwurf kann per API nicht nachträglich finalisiert werden).", "warn");
+    }
+
     if (data.technical) logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
     if (data.data && data.data.summary) {
       logErrorsFromSummary(data.data.summary);
@@ -301,6 +331,7 @@ async function callApi(endpoint, extraBody = {}) {
     lastOfferId = data.data.quotationId;
     updateLastOfferUi();
     logLine(`✅ Angebot erstellt — Angebots-ID: ${lastOfferId}`, "ok");
+    if (isDraftMode()) logLine("ℹ️ Entwurf erstellt: PDF ist hier nicht möglich (nur Final).", "info");
   } else {
     logLine("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
   }
@@ -311,6 +342,10 @@ async function callApi(endpoint, extraBody = {}) {
 
   return data;
 }
+
+// Events: Mode change
+document.getElementById("modeFinal").addEventListener("change", () => { updateDraftUi(); updateLastOfferUi(); });
+document.getElementById("modeDraft").addEventListener("change", () => { updateDraftUi(); updateLastOfferUi(); });
 
 document.getElementById("btnTest").onclick = async () => {
   if (busy) return;
@@ -329,18 +364,11 @@ document.getElementById("btnCreate").onclick = async () => {
   if (busy) return;
   if (!validateBeforeAction({ needsExcel:true, needsPasswordMaybe:true })) return;
 
-  const mode = getMode();
-  const finalize = getFinalizeBoolFromMode(mode);
-
-  if (lastMode === "draft" && mode === "final") {
-    logLine("Hinweis: „Final“ erstellt ein NEUES Angebot (neue Angebotsnummer). Ein Entwurf kann per API nicht nachträglich finalisiert werden.", "warn");
-  }
-
-  lastMode = mode;
+  const finalize = getFinalizeBoolFromMode();
 
   setBusy(true);
   try {
-    logLine(`Erstelle Angebot im Modus: ${mode === "final" ? "FINAL" : "ENTWURF"} (finalize=${finalize})…`, "info");
+    logLine(`Erstelle Angebot im Modus: ${finalize ? "FINAL" : "ENTWURF"} (finalize=${finalize})…`, "info");
     await callApi("/api/create-offer", { finalize });
   } finally {
     setBusy(false);
@@ -363,7 +391,6 @@ document.getElementById("btnTemplateStatic").onclick = () => {
   window.location.href = `/templates/lexware_template.xlsx`;
 };
 
-// ✅ Artikel-Cache aktualisieren (refresh=1)
 document.getElementById("btnRefreshArticles").onclick = async () => {
   if (busy) return;
   if (!validateBeforeAction({ needsExcel:false, needsPasswordMaybe:true })) return;
@@ -381,7 +408,7 @@ document.getElementById("btnRefreshArticles").onclick = async () => {
     const count = data.data?.count ?? "?";
     logLine(`✅ Artikel-Cache aktualisiert. Artikel gefunden: ${count}`, "ok");
     logLine("Tipp: Wenn Dropdown/Template veraltet ist, Template (Auto/TTL) erneut laden.", "info");
-  } catch (e) {
+  } catch {
     logLine("❌ Fehler beim Aktualisieren des Artikel-Caches.", "err");
   } finally {
     setBusy(false);
@@ -390,6 +417,10 @@ document.getElementById("btnRefreshArticles").onclick = async () => {
 
 document.getElementById("btnPdf").onclick = () => {
   if (!lastOfferId) { logLine("Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
+  if (isDraftMode()) {
+    logLine("❌ PDF ist bei ENTWURF nicht möglich. Bitte im Modus FINAL erstellen.", "err");
+    return;
+  }
   if (!validateBeforeAction({ needsExcel:false, needsPasswordMaybe:true })) return;
 
   const pw = document.getElementById("password").value;
@@ -426,12 +457,15 @@ document.getElementById("btnReset").onclick = () => {
   document.getElementById("log").innerHTML = "";
   lastOfferId = null;
   updateLastOfferUi();
+
   document.getElementById("modeFinal").checked = true;
   document.getElementById("override").checked = false;
-  lastMode = "final";
+
   const fileInput = document.getElementById("file");
   fileInput.value = "";
   document.getElementById("fileInfo").textContent = "Noch keine Datei ausgewählt.";
+
+  updateDraftUi();
   logLine("🔄 Neue Sitzung gestartet: Protokoll, Datei und letzte Angebots-ID wurden zurückgesetzt.", "ok");
 };
 
@@ -485,6 +519,7 @@ async function refreshPing() {
 }
 
 updateLastOfferUi();
+updateDraftUi();
 refreshPing();
 setInterval(refreshPing, 30000);
 </script>
