@@ -3,641 +3,508 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Maiershirts — Lexoffice Angebots-Tool</title>
+<title>Maiershirts — Lexware Angebots-Tool</title>
+
 <style>
-  body { font-family: Arial, sans-serif; padding: 24px; }
-  h2 { margin-bottom: 10px; }
-  .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #fff; }
-  label { font-weight: 600; }
-  input[type="password"], input[type="file"], input[type="text"] { margin-top: 6px; }
-  button { padding: 8px 12px; margin-right: 8px; cursor: pointer; border: 1px solid #ccc; border-radius: 8px; background: #f6f6f6; }
-  button.secondary { opacity: 0.92; }
-  button.primary { background: #111; color: #fff; border-color: #111; }
-  button.danger { background: #fff; border-color: #d0d0d0; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .muted { color: #666; font-size: 12px; margin-top: 6px; line-height: 1.35; }
-  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-  .col { display: flex; flex-direction: column; gap: 10px; }
-  #log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; max-height: 360px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px; background: #fafafa; }
-  .ok { color: #0a7a2f; } .err { color: #b00020; } .info { color: #333; } .warn { color: #8a5a00; }
-  .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #ddd; border-radius: 999px; padding: 6px 10px; background: #fff; }
-  .statusline { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; }
-  .badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #ddd; border-radius: 999px; padding: 6px 10px; background: #fff; }
-  .dot { width: 8px; height: 8px; border-radius: 99px; display: inline-block; background: #bbb; }
-  .dot.ok { background: #0a7a2f; } .dot.err { background: #b00020; } .dot.warn { background: #8a5a00; }
-  .split { display: grid; grid-template-columns: 1fr; gap: 12px; }
-  @media (min-width: 980px) { .split { grid-template-columns: 1.15fr 0.85fr; } }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  .small { font-size: 12px; }
-  .inline-input { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .inputbox { border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; background: #fff; min-width: 280px; }
-  .banner { border: 1px solid #eee; border-left: 4px solid #111; border-radius: 10px; padding: 10px 12px; background: #fafafa; }
+  :root {
+    --bg: #0b0f14;
+    --card: #121826;
+    --muted: #9aa4b2;
+    --text: #e5e7eb;
+    --ok: #22c55e;
+    --err: #ef4444;
+    --warn: #f59e0b;
+    --border: rgba(255,255,255,0.08);
+    --btn: #1f2937;
+  }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: linear-gradient(180deg, #070a0f, #0b0f14);
+    color: var(--text);
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  h1 {
+    margin: 0 0 6px 0;
+    font-size: 20px;
+    letter-spacing: 0.2px;
+  }
+
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: -2px;
+  }
+
+  .card {
+    background: rgba(18, 24, 38, 0.85);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 820px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  label { display:block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type="password"], input[type="file"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+    color: var(--text);
+  }
+
+  .row {
+    display:flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  button {
+    background: var(--btn);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .pill {
+    display:inline-block;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .ok { color: var(--ok); }
+  .err { color: var(--err); }
+  .warn { color: var(--warn); }
+  .muted { color: var(--muted); }
+
+  .overview {
+    display:grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  @media (max-width: 820px) {
+    .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .kpi {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(0,0,0,0.18);
+  }
+  .kpi .k { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+  #log {
+    height: 42vh;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.4;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .logline { margin: 2px 0; }
+  .logline.ok { color: var(--ok); }
+  .logline.err { color: var(--err); }
+  .logline.warn { color: var(--warn); }
+  .logline.info { color: var(--text); opacity: 0.92; }
 </style>
 </head>
+
 <body>
-
-<h2>Maiershirts — Lexoffice Angebots-Tool</h2>
-
-<div class="split">
-  <div class="col">
-
-    <!-- Passwort -->
-    <div class="box">
-      <label>Tool-Passwort</label><br>
-      <input id="password" type="password" style="width:320px;" autocomplete="current-password" />
-      <div id="pwHint" class="muted">Wird geprüft…</div>
-      <div class="muted">Tipp: Passwort wird nur in dieser Browser-Sitzung gespeichert (nicht dauerhaft).</div>
+  <div class="wrap">
+    <div>
+      <h1>Maiershirts — Lexware Angebots-Tool</h1>
+      <div class="sub">Phase 1: Stabil & einfach • Testen → Erstellen → (optional) PDF</div>
     </div>
 
-    <!-- Excel -->
-    <div class="box">
-      <label>Excel-Datei (.xlsx)</label><br>
-      <input id="file" type="file" accept=".xlsx" />
-      <div id="fileInfo" class="muted">Noch keine Datei ausgewählt.</div>
-    </div>
-
-    <!-- Optionen -->
-    <div class="box">
-      <div class="row">
-        <label class="pill"><input type="radio" name="mode" id="modeFinal" value="final" checked /> Final (fertig)</label>
-        <label class="pill"><input type="radio" name="mode" id="modeDraft" value="draft" /> Entwurf</label>
-        <label class="pill" title="Wenn aktiv, darf Excel-Preis auch bei Artikelpositionen verwendet werden (falls Backend konfiguriert).">
-          <input id="override" type="checkbox" /> Artikelpreis überschreiben erlauben
-        </label>
+    <div class="grid">
+      <div class="card">
+        <label>Tool-Passwort</label>
+        <input id="password" type="password" placeholder="Passwort eingeben…" />
+        <div style="margin-top:10px" class="row">
+          <span class="pill" id="sys">Systemstatus: wird geprüft…</span>
+          <span class="pill" id="mode">Modus: wird geladen…</span>
+        </div>
       </div>
 
-      <div id="draftHint" class="banner muted" style="margin-top:10px; display:none;">
-        ⚠️ Entwurf gewählt: <b>PDF-Download ist bei Entwurf nicht möglich</b> (Lexware liefert 409).<br>
-        Wenn du PDF brauchst: bitte im Modus <b>Final</b> erstellen.
-      </div>
-
-      <div class="muted" style="margin-top:8px;">
-        Hinweis: <b>Ein Entwurf kann per API nicht nachträglich „finalisiert“ werden.</b><br>
-        Wenn du nach einem Entwurf später „Final“ erstellst, entsteht ein <b>neues Angebot</b> mit <b>neuer Angebotsnummer</b>.
+      <div class="card">
+        <label>Excel-Datei (.xlsx)</label>
+        <input id="file" type="file" accept=".xlsx" />
+        <div style="margin-top:10px" class="row">
+          <label style="display:flex; gap:10px; align-items:center; margin:0; color:var(--text)">
+            <input id="override" type="checkbox" />
+            Artikelpreis überschreiben erlauben
+          </label>
+          <label style="display:flex; gap:10px; align-items:center; margin:0; color:var(--text)">
+            <input id="finalize" type="checkbox" />
+            Direkt FINAL erstellen (finalize=true)
+          </label>
+        </div>
       </div>
     </div>
 
-    <!-- Aktionen -->
-    <div class="box">
+    <div class="card">
       <div class="row">
         <button id="btnTest">Testmodus ausführen</button>
-        <button id="btnCreate" class="primary">Final erstellen</button>
+        <button id="btnCreate">Angebot erstellen</button>
         <button id="btnPdf" disabled>PDF herunterladen</button>
-        <button id="btnOpenLexware" disabled>In Lexware öffnen</button>
-        <button id="btnReset" class="danger">Neue Sitzung / Reset</button>
+        <button id="btnClear" style="margin-left:auto">Protokoll leeren</button>
+      </div>
+      <div class="muted" style="margin-top:10px; font-size: 13px">
+        Tipp: Wenn du <b>PDF</b> willst, nutze <b>FINAL</b> (Entwurf/Draft liefert oft 409).
       </div>
 
-      <div class="sep" style="height:1px;background:#eee;margin:12px 0;"></div>
-
-      <div class="inline-input">
-        <div>
-          <div class="small muted">Letztes Angebot</div>
-          <input id="lastOfferId" class="inputbox mono" type="text" readonly placeholder="Noch kein Angebot erstellt" />
-        </div>
-        <button id="btnCopyId" class="secondary" disabled>Copy</button>
+      <div style="margin-top:12px" class="overview">
+        <div class="kpi"><div class="k">Status</div><div class="v" id="kStatus">–</div></div>
+        <div class="kpi"><div class="k">Errors</div><div class="v" id="kErr">0</div></div>
+        <div class="kpi"><div class="k">Warnings</div><div class="v" id="kWarn">0</div></div>
+        <div class="kpi"><div class="k">Auto-Namen</div><div class="v" id="kAuto">0</div></div>
       </div>
 
-      <div class="muted" style="margin-top:8px;">
-        „In Lexware öffnen“ klappt nur, wenn du im Browser bei Lexware eingeloggt bist.
-      </div>
+      <div class="muted" style="margin-top:12px; font-size: 13px" id="lastLinks"></div>
+    </div>
 
-      <div id="busyHint" class="muted" style="margin-top:10px; display:none;">
-        ⏳ Bitte warten… Anfrage läuft. Buttons sind kurz deaktiviert.
+    <!-- TEMPLATE (ganz unten wie gewünscht) -->
+    <div class="card">
+      <div class="row">
+        <div style="font-weight:700">Template</div>
+        <span class="muted" style="font-size:13px">Statisch aus Repo oder dynamisch (inkl. Artikel-Lookup, Cache/TTL)</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnTplStatic">Template (statisch) herunterladen</button>
+        <button id="btnTplDynamic">Template (dynamisch) herunterladen</button>
+        <button id="btnRefreshArticles" style="margin-left:auto">Artikel-Cache refresh</button>
+      </div>
+      <div class="muted" style="margin-top:8px; font-size: 13px">
+        Hinweis: Wenn Excel wieder <b>#NAME?</b> in articleId schreibt, ist das egal – der Server mappt automatisch über <b>articleNumber</b> oder <b>articleTitle</b>.
       </div>
     </div>
 
-    <!-- ✅ TEMPLATE BEREICH GANZ NACH UNTEN -->
-    <div class="box">
-      <strong>Template</strong>
-      <div class="row" style="margin-top:10px;">
-        <button id="btnTemplateAuto" class="secondary">Template herunterladen (Auto / TTL)</button>
-        <button id="btnTemplateStatic" class="secondary">Template herunterladen (statisch)</button>
-        <button id="btnRefreshArticles" class="secondary">Artikel-Cache aktualisieren</button>
+    <!-- PROTOKOLL ganz unten -->
+    <div class="card">
+      <div class="row">
+        <div style="font-weight:700">Protokoll</div>
+        <span class="muted" style="font-size:13px">chronologisch • neueste Einträge unten</span>
       </div>
-      <div class="muted">
-        Auto = Template inkl. Artikel-Lookup aus Lexware (Cache/TTL).<br>
-        Statisch = Datei aus <span class="mono">/templates</span>.<br>
-        Wenn ein neuer Artikel nicht gefunden wird: „Artikel-Cache aktualisieren“, dann Auto-Template neu laden.
-      </div>
-    </div>
-
-  </div>
-
-  <div class="col">
-    <div class="box">
-      <strong>Systemstatus</strong>
-      <div class="statusline" style="margin-top:10px;">
-        <span class="badge"><span id="dotBackend" class="dot"></span><span id="sBackend">Backend: prüfe…</span></span>
-        <span class="badge"><span id="dotAuth" class="dot"></span><span id="sAuth">Passwortschutz: ?</span></span>
-        <span class="badge"><span id="dotTtl" class="dot"></span><span id="sTtl">Template TTL: ?</span></span>
-        <span class="badge"><span id="dotRate" class="dot"></span><span id="sRate">Rate-Limit Puffer: ?</span></span>
-      </div>
-      <div id="sysDetails" class="muted" style="margin-top:10px;"></div>
-    </div>
-
-    <div class="box">
-      <strong>Protokoll (chronologisch)</strong><br>
-      <div id="log" style="margin-top:10px;"></div>
+      <div id="log" style="margin-top:10px"></div>
     </div>
   </div>
-</div>
 
 <script>
-let lastOfferId = null;
-let pingInfo = null;
-let busy = false;
+  let lastQuotationId = null;
 
-function lexwareOfferUrl(id) {
-  return `https://app.lexware.de/voucher/#/${encodeURIComponent(id)}`;
-}
-
-function nowTime() {
-  const d = new Date();
-  return d.toLocaleString();
-}
-
-function logLine(msg, cls = "info") {
-  const el = document.getElementById("log");
-  const div = document.createElement("div");
-  div.className = cls || "";
-  div.textContent = `[${nowTime()}] ${msg}`;
-  el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
-}
-
-function logJson(title, obj, cls="info") {
-  logLine(title, cls);
-  try { logLine(JSON.stringify(obj, null, 2), cls); }
-  catch { logLine(String(obj), cls); }
-}
-
-function setBusy(on) {
-  busy = on;
-  const disable = !!on;
-
-  // Aktionen
-  document.getElementById("btnTest").disabled = disable || !canUseActions();
-  document.getElementById("btnCreate").disabled = disable || !canUseActions();
-  document.getElementById("btnTemplateAuto").disabled = disable || !canUseTemplate();
-  document.getElementById("btnTemplateStatic").disabled = disable; // static geht auch ohne pw, aber wir lassen sauber
-  document.getElementById("btnRefreshArticles").disabled = disable || !canUseTemplate();
-  document.getElementById("btnReset").disabled = disable ? true : false;
-
-  // Inputs
-  document.getElementById("file").disabled = disable || !canPickFile();
-  document.getElementById("password").disabled = disable ? true : false;
-  document.getElementById("override").disabled = disable || !canUseActions();
-  document.getElementById("modeFinal").disabled = disable || !canUseActions(false);
-  document.getElementById("modeDraft").disabled = disable || !canUseActions(false);
-
-  document.getElementById("busyHint").style.display = disable ? "block" : "none";
-}
-
-function isDraftMode() {
-  return document.getElementById("modeDraft").checked;
-}
-function getFinalizeBoolFromMode() {
-  return document.getElementById("modeFinal").checked; // final => true
-}
-
-function updateCreateButtonLabel() {
-  const btn = document.getElementById("btnCreate");
-  btn.textContent = isDraftMode() ? "Entwurf erstellen" : "Final erstellen";
-}
-
-function updateDraftUi() {
-  const hint = document.getElementById("draftHint");
-  hint.style.display = isDraftMode() ? "block" : "none";
-
-  // PDF in Draft immer aus
-  const btnPdf = document.getElementById("btnPdf");
-  if (isDraftMode()) btnPdf.disabled = true;
-  else btnPdf.disabled = !lastOfferId;
-
-  updateCreateButtonLabel();
-}
-
-function updateLastOfferUi() {
-  const input = document.getElementById("lastOfferId");
-  const btnCopy = document.getElementById("btnCopyId");
-  const btnPdf = document.getElementById("btnPdf");
-  const btnOpen = document.getElementById("btnOpenLexware");
-
-  if (lastOfferId) {
-    input.value = lastOfferId;
-    btnCopy.disabled = false;
-    btnOpen.disabled = false;
-    btnPdf.disabled = isDraftMode();
-  } else {
-    input.value = "";
-    btnCopy.disabled = true;
-    btnPdf.disabled = true;
-    btnOpen.disabled = true;
-  }
-}
-
-function selectedFileExists() {
-  const fileInput = document.getElementById("file");
-  return !!(fileInput.files && fileInput.files[0]);
-}
-
-function passwordOkForProtected() {
-  if (!pingInfo) return false;
-  if (!pingInfo.passwordProtected) return true;
-  return !!document.getElementById("password").value;
-}
-
-function canPickFile() {
-  // Passwort zuerst: wenn geschützt und kein Passwort, Datei deaktivieren
-  if (!pingInfo) return false;
-  if (pingInfo.passwordProtected && !document.getElementById("password").value) return false;
-  return true;
-}
-
-function canUseActions(requireFile = true) {
-  if (!pingInfo) return false;
-  if (!passwordOkForProtected()) return false;
-  if (requireFile && !selectedFileExists()) return false;
-  return true;
-}
-
-function canUseTemplate() {
-  if (!pingInfo) return false;
-  if (!passwordOkForProtected()) return false;
-  return true;
-}
-
-function updateGuards() {
-  // Hinweistext Passwort
-  const pwHint = document.getElementById("pwHint");
-  if (!pingInfo) {
-    pwHint.textContent = "Wird geprüft…";
-  } else if (!pingInfo.passwordProtected) {
-    pwHint.textContent = "Passwortschutz: aus (kein Passwort nötig).";
-  } else {
-    pwHint.textContent = document.getElementById("password").value
-      ? "Passwortschutz: aktiv (Passwort gesetzt ✅)"
-      : "Passwortschutz: aktiv → bitte Passwort eingeben, dann Excel auswählen.";
+  function ts() {
+    const d = new Date();
+    return `[${d.toLocaleString('de-DE')}]`;
   }
 
-  // Aktionen sperren/freigeben
-  document.getElementById("file").disabled = !canPickFile() || busy;
-  document.getElementById("btnTest").disabled = !canUseActions() || busy;
-  document.getElementById("btnCreate").disabled = !canUseActions() || busy;
-
-  document.getElementById("btnTemplateAuto").disabled = !canUseTemplate() || busy;
-  document.getElementById("btnRefreshArticles").disabled = !canUseTemplate() || busy;
-
-  // PDF/Open abhängig von lastOfferId und Draft
-  updateLastOfferUi();
-  updateDraftUi();
-}
-
-async function readFileBase64(file) {
-  return new Promise(resolve => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result.split(",")[1]);
-    r.readAsDataURL(file);
-  });
-}
-
-function logErrorsFromSummary(summary) {
-  if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
-  logLine("Details zu den Fehlern:", "info");
-  summary.errors.forEach(err => {
-    const line = [
-      err.sheet ? `[${err.sheet}]` : '',
-      err.row ? `Zeile ${err.row}` : '',
-      err.field ? `Feld "${err.field}"` : '',
-      "→",
-      err.message || ''
-    ].filter(Boolean).join(" ");
-    logLine("  - " + line, "err");
-  });
-}
-
-function logWarningsFromSummary(summary) {
-  if (!summary || !Array.isArray(summary.warnings) || !summary.warnings.length) return;
-  logLine("Hinweise / Warnungen:", "warn");
-  summary.warnings.forEach(w => {
-    const line = [
-      w.sheet ? `[${w.sheet}]` : '',
-      w.row ? `Zeile ${w.row}` : '',
-      "→",
-      w.message || ''
-    ].filter(Boolean).join(" ");
-    logLine("  - " + line, "warn");
-  });
-}
-
-function getAuthHeaders() {
-  const password = document.getElementById("password").value;
-  const headers = {};
-  if (password) headers["x-tool-password"] = password;
-  return headers;
-}
-
-// ✅ Smart: erkennt JSON-Fehler vs Datei (Blob) und loggt sauber
-async function downloadSmart({ url, filenameFallback, logLabel }) {
-  try {
-    const res = await fetch(url, { headers: { ...getAuthHeaders() } });
-
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-
-    // JSON Fehler (oder Backend liefert {ok:false})
-    if (ct.includes("application/json")) {
-      const data = await res.json();
-      logLine(`❌ ${logLabel}: ${data.message || "Fehler"}`, "err");
-      if (data.technical) logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
-
-      // Spezialfall: Draft PDF 409
-      if (data.stage === "lexware-pdf" && data.technical && data.technical.httpStatus === 409) {
-        logLine("➡️ PDF ist nur bei FINAL-Angeboten möglich. Dieses Angebot ist im Status ENTWURF.", "warn");
-        logLine("➡️ Lösung: Angebot im Modus „Final“ erstellen.", "warn");
-      }
-      return;
-    }
-
-    // Datei
-    const blob = await res.blob();
-    const disp = res.headers.get("content-disposition") || "";
-    let fname = filenameFallback;
-
-    // Versuche filename aus Content-Disposition
-    const m = disp.match(/filename\*?=(?:UTF-8''|")?([^\";]+)"?/i);
-    if (m && m[1]) fname = decodeURIComponent(m[1].replace(/"/g, "").trim());
-
-    const a = document.createElement("a");
-    const objectUrl = URL.createObjectURL(blob);
-    a.href = objectUrl;
-    a.download = fname || filenameFallback;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
-
-    logLine(`✅ ${logLabel}: Download gestartet (${fname}).`, "ok");
-  } catch (e) {
-    console.error(e);
-    logLine(`❌ ${logLabel}: Download fehlgeschlagen (Netzwerk/Browser).`, "err");
+  function log(msg, cls = "info") {
+    const el = document.getElementById("log");
+    const div = document.createElement("div");
+    div.className = `logline ${cls}`;
+    div.textContent = `${ts()} ${msg}`;
+    el.appendChild(div);                 // ✅ chronologisch
+    el.scrollTop = el.scrollHeight;      // ✅ nicht abgeschnitten: autoscroll
   }
-}
 
-async function callApi(endpoint, extraBody = {}) {
-  const fileInput = document.getElementById("file");
-  const allowPriceOverride = document.getElementById("override").checked;
+  function clearLog() {
+    document.getElementById("log").innerHTML = "";
+  }
 
-  const file = fileInput.files[0];
-  const excelData = await readFileBase64(file);
-
-  let data;
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ excelData, allowPriceOverride, ...extraBody })
+  async function readFileBase64(file) {
+    return new Promise(resolve => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result.split(",")[1]);
+      r.readAsDataURL(file);
     });
-    data = await res.json();
-  } catch (e) {
-    console.error(e);
-    logLine("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
-    return null;
   }
 
-  if (!data.ok) {
-    logLine(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Keine genaue Fehlermeldung vorhanden."}`, "err");
-    if (data.technical) logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
-    if (data.data && data.data.summary) {
-      logErrorsFromSummary(data.data.summary);
-      logWarningsFromSummary(data.data.summary);
+  function setKpis({ statusText = "–", err = 0, warn = 0, auto = 0 } = {}) {
+    document.getElementById("kStatus").textContent = statusText;
+    document.getElementById("kErr").textContent = String(err);
+    document.getElementById("kWarn").textContent = String(warn);
+    document.getElementById("kAuto").textContent = String(auto);
+  }
+
+  function renderLinks(quotationId) {
+    const el = document.getElementById("lastLinks");
+    if (!quotationId) { el.textContent = ""; return; }
+    const editUrl = `https://app.lexware.de/voucher/#/${quotationId}`;
+    el.innerHTML = `Letztes Angebot: <span class="pill">${quotationId}</span> • <a href="${editUrl}" target="_blank" rel="noopener noreferrer">In Lexware öffnen</a>`;
+  }
+
+  function logErrorsFromSummary(summary) {
+    if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
+    log("Details zu den Fehlern:", "err");
+    summary.errors.forEach(err => {
+      const line = [
+        err.sheet ? `[${err.sheet}]` : '',
+        err.row ? `Zeile ${err.row}` : '',
+        err.field ? `Feld "${err.field}"` : '',
+        '→',
+        err.message || ''
+      ].filter(Boolean).join(' ');
+      log('  - ' + line, 'err');
+    });
+  }
+
+  function logWarningsFromSummary(summary) {
+    if (!summary || !Array.isArray(summary.warnings) || !summary.warnings.length) return;
+    log("Hinweise / Warnungen:", "warn");
+    summary.warnings.forEach(w => {
+      const line = [
+        w.sheet ? `[${w.sheet}]` : '',
+        w.row ? `Zeile ${w.row}` : '',
+        '→',
+        w.message || ''
+      ].filter(Boolean).join(' ');
+      log('  - ' + line, 'warn');
+    });
+  }
+
+  function updateOverviewFromSummary(summary, statusText) {
+    const err = summary?.errors?.length || 0;
+    const warn = summary?.warnings?.length || 0;
+    const auto = summary?.autoNamedLineItems?.length || 0;
+    setKpis({ statusText, err, warn, auto });
+  }
+
+  async function callApi(endpoint, extraBody = {}) {
+    const fileInput = document.getElementById("file");
+    const password = document.getElementById("password").value;
+    const allowPriceOverride = document.getElementById("override").checked;
+    const finalize = document.getElementById("finalize").checked;
+
+    if (!fileInput.files[0]) {
+      log("Bitte zuerst eine Excel-Datei auswählen.", "err");
+      return null;
     }
+
+    const excelData = await readFileBase64(fileInput.files[0]);
+
+    const body = {
+      excelData,
+      password,
+      allowPriceOverride,
+      finalize,
+      ...extraBody
+    };
+
+    let data;
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      data = await res.json();
+    } catch (e) {
+      console.error(e);
+      log("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
+      return null;
+    }
+
+    // Debug in Console
+    console.log("API Antwort:", data);
+
+    if (!data.ok) {
+      const status = data.status || 'UNBEKANNT';
+      const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
+      log(`❌ Fehler (${status}): ${msg}`, "err");
+
+      // Lexware Technical block klar anzeigen
+      if (data.technical) {
+        log("—— Lexware API ——", "muted");
+        if (data.technical.httpStatus != null) log(`HTTP-Status: ${data.technical.httpStatus}`, "muted");
+        if (data.technical.meta?.message) log(`message: ${data.technical.meta.message}`, "muted");
+        if (data.technical.meta?.traceId) log(`traceId: ${data.technical.meta.traceId}`, "muted");
+        if (data.technical.meta?.requestId) log(`requestId: ${data.technical.meta.requestId}`, "muted");
+        if (data.technical.raw) {
+          log("raw:", "muted");
+          log(JSON.stringify(data.technical.raw, null, 2), "muted");
+        }
+      }
+
+      if (data.data && data.data.summary) {
+        updateOverviewFromSummary(data.data.summary, "FEHLER");
+        logErrorsFromSummary(data.data.summary);
+        logWarningsFromSummary(data.data.summary);
+      } else {
+        setKpis({ statusText: "FEHLER" });
+      }
+
+      return data;
+    }
+
+    // Erfolgsfall
+    const msg = data.message || "OK";
+    log(`✅ ${msg}`, "ok");
+
+    if (data.data && data.data.quotationId) {
+      lastQuotationId = data.data.quotationId;
+      renderLinks(lastQuotationId);
+      document.getElementById("btnPdf").disabled = false;
+      log(`Angebot-ID: ${lastQuotationId}`, "ok");
+    }
+
+    if (data.data && data.data.summary) {
+      updateOverviewFromSummary(data.data.summary, "OK");
+      logWarningsFromSummary(data.data.summary);
+    } else {
+      setKpis({ statusText: "OK" });
+    }
+
     return data;
   }
 
-  if (data.data && data.data.quotationId) {
-    lastOfferId = data.data.quotationId;
-    updateLastOfferUi();
-    logLine(`✅ Angebot erstellt — Angebots-ID: ${lastOfferId}`, "ok");
-    if (isDraftMode()) logLine("ℹ️ Entwurf erstellt: PDF ist hier nicht möglich (nur Final).", "info");
-  } else {
-    logLine("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
-  }
-
-  if (data.data && data.data.summary) {
-    logWarningsFromSummary(data.data.summary);
-  }
-
-  return data;
-}
-
-// Mode change
-document.getElementById("modeFinal").addEventListener("change", () => { updateDraftUi(); updateGuards(); });
-document.getElementById("modeDraft").addEventListener("change", () => { updateDraftUi(); updateGuards(); });
-
-// Password changes (Session Storage)
-document.getElementById("password").addEventListener("input", () => {
-  const pw = document.getElementById("password").value;
-  sessionStorage.setItem("tool_password", pw || "");
-  updateGuards();
-});
-
-// Buttons
-document.getElementById("btnTest").onclick = async () => {
-  if (busy) return;
-  if (!canUseActions()) { logLine("❌ Bitte zuerst Passwort (falls aktiv) und Excel auswählen.", "err"); return; }
-
-  setBusy(true);
-  try {
-    logLine("Starte Testmodus…", "info");
+  // Buttons
+  document.getElementById("btnTest").onclick = async () => {
+    log("Starte Testmodus…", "info");
     await callApi("/api/test-excel");
-  } finally {
-    setBusy(false);
-    updateGuards();
-  }
-};
+  };
 
-document.getElementById("btnCreate").onclick = async () => {
-  if (busy) return;
-  if (!canUseActions()) { logLine("❌ Bitte zuerst Passwort (falls aktiv) und Excel auswählen.", "err"); return; }
+  document.getElementById("btnCreate").onclick = async () => {
+    const finalize = document.getElementById("finalize").checked;
+    log(`Erstelle Angebot im Modus: ${finalize ? "FINAL" : "ENTWURF"} (finalize=${finalize})…`, "info");
+    await callApi("/api/create-offer");
+  };
 
-  const finalize = getFinalizeBoolFromMode();
-
-  setBusy(true);
-  try {
-    logLine(`Erstelle Angebot im Modus: ${finalize ? "FINAL" : "ENTWURF"} (finalize=${finalize})…`, "info");
-    await callApi("/api/create-offer", { finalize });
-  } finally {
-    setBusy(false);
-    updateGuards();
-  }
-};
-
-document.getElementById("btnTemplateAuto").onclick = async () => {
-  if (busy) return;
-  if (!canUseTemplate()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
-
-  logLine("Lade Template (Auto/TTL)…", "info");
-  await downloadSmart({
-    url: "/api/template.xlsx",
-    filenameFallback: "lexware_template.xlsx",
-    logLabel: "Template (Auto/TTL)"
-  });
-};
-
-document.getElementById("btnTemplateStatic").onclick = () => {
-  if (busy) return;
-  logLine("Lade Template (statisch)…", "info");
-  // static ist wirklich statisch – normaler Download reicht
-  window.location.href = `/templates/lexware_template.xlsx`;
-};
-
-document.getElementById("btnRefreshArticles").onclick = async () => {
-  if (busy) return;
-  if (!canUseTemplate()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
-
-  setBusy(true);
-  try {
-    logLine("Aktualisiere Artikel-Cache (refresh=1)…", "info");
-    const res = await fetch("/api/articles?refresh=1", { headers: { ...getAuthHeaders() } });
-    const data = await res.json();
-    if (!data.ok) {
-      logLine(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Artikel-Refresh fehlgeschlagen."}`, "err");
-      if (data.technical) logJson("—— Technical ——", data.technical, "info");
-      return;
-    }
-    const count = data.data?.count ?? "?";
-    logLine(`✅ Artikel-Cache aktualisiert. Artikel gefunden: ${count}`, "ok");
-    logLine("Tipp: Auto-Template neu laden, wenn Dropdown/Lookup veraltet war.", "info");
-  } catch {
-    logLine("❌ Fehler beim Aktualisieren des Artikel-Caches.", "err");
-  } finally {
-    setBusy(false);
-    updateGuards();
-  }
-};
-
-document.getElementById("btnPdf").onclick = async () => {
-  if (!lastOfferId) { logLine("❌ Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
-  if (isDraftMode()) { logLine("❌ PDF ist bei ENTWURF nicht möglich. Bitte im Modus FINAL erstellen.", "err"); return; }
-  if (!passwordOkForProtected()) { logLine("❌ Passwortschutz aktiv: bitte Passwort eingeben.", "err"); return; }
-  if (busy) return;
-
-  logLine("Lade PDF…", "info");
-  await downloadSmart({
-    url: `/api/download-pdf?id=${encodeURIComponent(lastOfferId)}`,
-    filenameFallback: "quotation.pdf",
-    logLabel: "PDF"
-  });
-};
-
-document.getElementById("btnOpenLexware").onclick = () => {
-  if (!lastOfferId) { logLine("❌ Keine Angebots-ID vorhanden. Bitte zuerst ein Angebot erstellen.", "err"); return; }
-  const url = lexwareOfferUrl(lastOfferId);
-  logLine("Öffne Angebot in Lexware (neuer Tab)…", "info");
-  window.open(url, "_blank", "noopener,noreferrer");
-};
-
-document.getElementById("btnCopyId").onclick = async () => {
-  if (!lastOfferId) return;
-  try {
-    await navigator.clipboard.writeText(lastOfferId);
-    logLine("✅ Angebots-ID in die Zwischenablage kopiert.", "ok");
-  } catch {
-    const input = document.getElementById("lastOfferId");
-    input.focus(); input.select();
-    document.execCommand("copy");
-    logLine("✅ Angebots-ID in die Zwischenablage kopiert (Fallback).", "ok");
-  }
-};
-
-document.getElementById("btnReset").onclick = () => {
-  if (busy) return;
-
-  document.getElementById("log").innerHTML = "";
-  lastOfferId = null;
-  updateLastOfferUi();
-
-  document.getElementById("modeFinal").checked = true;
-  document.getElementById("override").checked = false;
-
-  const fileInput = document.getElementById("file");
-  fileInput.value = "";
-  document.getElementById("fileInfo").textContent = "Noch keine Datei ausgewählt.";
-
-  updateDraftUi();
-  updateGuards();
-  logLine("🔄 Neue Sitzung gestartet: Protokoll, Datei und letzte Angebots-ID wurden zurückgesetzt.", "ok");
-};
-
-document.getElementById("file").addEventListener("change", () => {
-  const fileInput = document.getElementById("file");
-  const info = document.getElementById("fileInfo");
-  if (!fileInput.files || !fileInput.files[0]) {
-    info.textContent = "Noch keine Datei ausgewählt.";
-    updateGuards();
-    return;
-  }
-  const f = fileInput.files[0];
-  const sizeKb = Math.round((f.size || 0) / 1024);
-  info.textContent = `Ausgewählt: ${f.name} (${sizeKb} KB)`;
-  logLine(`Excel ausgewählt: ${f.name} (${sizeKb} KB)`, "info");
-  updateGuards();
-});
-
-function setStatus(dotId, textId, state, text) {
-  const dot = document.getElementById(dotId);
-  const lbl = document.getElementById(textId);
-  dot.classList.remove("ok","err","warn");
-  if (state) dot.classList.add(state);
-  lbl.textContent = text;
-}
-
-async function refreshPing() {
-  try {
-    const r = await fetch("/api/ping");
-    const d = await r.json();
-    pingInfo = d;
-
-    if (!d.ok) {
-      setStatus("dotBackend","sBackend","warn","Backend: antwortet (ok=false)");
-      updateGuards();
+  document.getElementById("btnPdf").onclick = async () => {
+    const password = document.getElementById("password").value;
+    if (!lastQuotationId) {
+      log("Kein Angebot vorhanden. Bitte erst erstellen.", "err");
       return;
     }
 
-    setStatus("dotBackend","sBackend","ok","Backend: OK");
-    if (d.passwordProtected) setStatus("dotAuth","sAuth","warn",`Passwortschutz: aktiv (${d.passwordMode || "?"})`);
-    else setStatus("dotAuth","sAuth","ok","Passwortschutz: aus");
+    // PDF Download ist GET -> Passwort per Query
+    const url = `/api/download-pdf?id=${encodeURIComponent(lastQuotationId)}&password=${encodeURIComponent(password)}`;
+    log("Starte PDF Download…", "info");
 
-    const ttlMin = Math.round((d.templateTtlMs || 0) / 60000);
-    setStatus("dotTtl","sTtl","ok",`Template TTL: ${ttlMin} min`);
-    setStatus("dotRate","sRate","ok",`Rate-Limit Puffer: ${d.minIntervalMs} ms`);
+    try {
+      const res = await fetch(url);
+      const contentType = res.headers.get("content-type") || "";
 
-    document.getElementById("sysDetails").textContent =
-      `API: ${d.apiBaseUrl} • Finalize-Default: ${d.finalizeDefault ? "true" : "false"} • allowPriceOverrideDefault: ${d.allowPriceOverrideDefault ? "true" : "false"}`;
+      if (contentType.includes("application/json")) {
+        const j = await res.json();
+        console.log("PDF JSON:", j);
+        log(`❌ PDF Fehler (${j.status || "ERROR"}): ${j.message || "Unbekannt"}`, "err");
+        if (j.technical?.raw) log(JSON.stringify(j.technical.raw, null, 2), "muted");
+        return;
+      }
 
-    updateGuards();
-  } catch {
-    setStatus("dotBackend","sBackend","err","Backend: nicht erreichbar");
-    setStatus("dotAuth","sAuth","","Passwortschutz: ?");
-    setStatus("dotTtl","sTtl","","Template TTL: ?");
-    setStatus("dotRate","sRate","","Rate-Limit Puffer: ?");
-    document.getElementById("sysDetails").textContent = "❌ Backend nicht erreichbar.";
-    pingInfo = null;
-    updateGuards();
-  }
-}
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `quotation_${lastQuotationId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log("✅ PDF Download gestartet.", "ok");
+    } catch (e) {
+      console.error(e);
+      log("❌ Fehler beim PDF Download.", "err");
+    }
+  };
 
-// Init
-(function init() {
-  // Passwort aus Session holen (nur für diese Sitzung)
-  const saved = sessionStorage.getItem("tool_password");
-  if (saved) document.getElementById("password").value = saved;
+  document.getElementById("btnClear").onclick = () => {
+    clearLog();
+    setKpis({ statusText: "–", err: 0, warn: 0, auto: 0 });
+    document.getElementById("lastLinks").textContent = "";
+    log("Protokoll geleert.", "muted");
+  };
 
-  updateLastOfferUi();
-  updateDraftUi();
-  refreshPing();
-  setInterval(refreshPing, 30000);
-})();
+  document.getElementById("btnTplStatic").onclick = () => {
+    window.open("/templates/lexware_template.xlsx", "_blank");
+    log("Template (statisch) geöffnet.", "info");
+  };
+
+  document.getElementById("btnTplDynamic").onclick = () => {
+    const password = document.getElementById("password").value;
+    window.open(`/api/template.xlsx?password=${encodeURIComponent(password)}`, "_blank");
+    log("Template (dynamisch) angefordert.", "info");
+  };
+
+  document.getElementById("btnRefreshArticles").onclick = async () => {
+    const password = document.getElementById("password").value;
+    log("Artikel-Cache refresh…", "info");
+    try {
+      const res = await fetch(`/api/articles?refresh=1&password=${encodeURIComponent(password)}`);
+      const j = await res.json();
+      if (!j.ok) {
+        log(`❌ Refresh Fehler: ${j.message || "Unbekannt"}`, "err");
+        return;
+      }
+      log(`✅ Artikel neu geladen: ${j.data?.count || 0}`, "ok");
+    } catch (e) {
+      console.error(e);
+      log("❌ Refresh Netzwerkfehler.", "err");
+    }
+  };
+
+  // Systemstatus prüfen
+  fetch("/api/ping")
+    .then(r => r.json())
+    .then(d => {
+      const sys = document.getElementById("sys");
+      const mode = document.getElementById("mode");
+
+      if (!d.ok) {
+        sys.textContent = "Systemstatus: Backend antwortet, aber ok=false.";
+        sys.className = "pill err";
+        return;
+      }
+
+      sys.textContent = `Systemstatus: Backend erreichbar • Rate-Limit: ${d.minIntervalMs}ms • Timeout: ${d.axiosTimeoutMs}ms`;
+      sys.className = "pill ok";
+
+      mode.textContent = `Auth: ${d.passwordMode} • Template TTL: ${Math.round((d.templateTtlMs||0)/60000)}min`;
+      mode.className = "pill muted";
+
+      // finalizeDefault setzen
+      document.getElementById("finalize").checked = !!d.finalizeDefault;
+
+      log("System bereit.", "ok");
+    })
+    .catch(() => {
+      const sys = document.getElementById("sys");
+      sys.textContent = "Systemstatus: ❌ Backend nicht erreichbar.";
+      sys.className = "pill err";
+      log("❌ Backend nicht erreichbar.", "err");
+    });
 </script>
 
 </body>
