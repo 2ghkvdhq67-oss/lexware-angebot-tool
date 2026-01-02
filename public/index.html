@@ -2,58 +2,43 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Maiershirts — Lexoffice Angebots-Tool</title>
 
 <style>
-body { font-family: Arial, sans-serif; padding: 24px; }
-h2 { margin-bottom: 10px; }
-
-.box {
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-button {
-  padding: 8px 12px;
-  margin-right: 8px;
-  cursor: pointer;
-}
-
-input[type="text"], input[type="password"] {
-  padding: 7px 10px;
-  width: 360px;
-  max-width: 100%;
-}
-
-#log {
-  white-space: pre-wrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  max-height: 340px;
-  overflow-y: auto;
-  border: 1px dashed #eee;
-  padding: 10px;
-  border-radius: 6px;
-  background: #fafafa;
-}
-
-.ok  { color: #0a7a0a; }
-.err { color: #b00020; }
-.info { color: #333; }
-
-.line {
-  margin: 2px 0;
-  font-size: 13px;
-}
-
-hr.sep {
-  border: none;
-  border-top: 1px solid #eee;
-  margin: 10px 0;
-}
-.small { font-size: 12px; color:#666; }
-.row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  body { font-family: Arial, sans-serif; padding: 24px; }
+  h2 { margin-bottom: 10px; }
+  .box {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  button {
+    padding: 8px 12px;
+    margin-right: 8px;
+    cursor: pointer;
+  }
+  button.secondary { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log {
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    max-height: 360px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fafafa;
+  }
+  .ok  { color: #0a7a2f; }
+  .err { color: #b00020; }
+  .info { color: #444; }
+  .muted { color: #666; font-size: 12px; }
+  .kv { margin-top: 6px; font-size: 12px; color: #333; }
+  .error-item { margin-left: 10px; font-size: 13px; }
+  .sep { height: 1px; background: #eee; margin: 10px 0; }
 </style>
 </head>
 
@@ -63,58 +48,54 @@ hr.sep {
 
 <div class="box">
   <div class="row">
-    <div>
+    <div style="min-width:260px;">
       <label>Tool-Passwort:</label><br>
-      <input id="password" type="password" placeholder="Passwort (falls aktiviert)" />
-      <div class="small">Wird für API-Aufrufe per Header <code>x-tool-password</code> genutzt.</div>
+      <input id="password" type="password" style="width:240px;" />
+      <div class="muted">Wird für API-Aufrufe & Downloads verwendet.</div>
+    </div>
+
+    <div style="min-width:320px;">
+      <label>Excel-Datei (.xlsx):</label><br>
+      <input id="file" type="file" accept=".xlsx" />
+      <div class="muted">Nutze das Template, damit Validierungen & Dropdowns passen.</div>
     </div>
   </div>
 </div>
 
 <div class="box">
-  <div class="row">
-    <button id="btnTemplate">Template herunterladen (automatisch, mit Dropdown)</button>
-    <span class="small">zieht Artikel-Lookup automatisch aus Lexware (TTL 10 min)</span>
-  </div>
-</div>
-
-<div class="box">
-  <label>Excel-Datei (.xlsx):</label><br>
-  <input id="file" type="file" accept=".xlsx" />
+  <label>
+    <input id="override" type="checkbox" />
+    Artikelpreis überschreiben erlauben
+  </label>
+  <div class="muted">Wenn aktiv, darf Excel-Preis auch bei Artikelpositionen verwendet werden (falls Backend so konfiguriert).</div>
 </div>
 
 <div class="box">
   <div class="row">
-    <label>
-      <input id="override" type="checkbox" />
-      Artikelpreis überschreiben erlauben
-    </label>
+    <button id="btnTemplateAuto" class="secondary">Template herunterladen (Auto / TTL)</button>
+    <button id="btnTemplateStatic" class="secondary">Template herunterladen (statisch)</button>
   </div>
+  <div class="muted">„Auto“ zieht Artikel-Lookup dynamisch (mit Cache/TTL). „Statisch“ ist die Datei aus /templates.</div>
 </div>
 
 <div class="box">
   <div class="row">
     <button id="btnTest">Testmodus ausführen</button>
-    <button id="btnOffer">Angebot erstellen</button>
-    <button id="btnFinalize">Angebot finalisieren</button>
-  </div>
-</div>
 
-<div class="box">
-  <div class="row">
-    <div>
-      <label>Quotation ID (für PDF):</label><br>
-      <input id="quotationId" type="text" placeholder="wird nach Erstellung automatisch gefüllt" />
-    </div>
-    <div style="align-self:flex-end;">
-      <button id="btnPdf">PDF herunterladen</button>
-    </div>
+    <button id="btnOfferDraft">Angebot erstellen (Entwurf)</button>
+    <button id="btnOfferFinalize">Finalisieren & Angebot erstellen</button>
+
+    <button id="btnPdf" disabled>PDF herunterladen</button>
+  </div>
+  <div class="muted">
+    Entwurf = erstellen ohne Finalisierung. Finalisieren = Angebot wird „fest“ (weniger Änderungen, PDF ready).
   </div>
 </div>
 
 <div class="box">
   <strong>Systemstatus:</strong><br>
   <div id="sys" class="info">Wird geprüft…</div>
+  <div id="sys2" class="muted"></div>
 </div>
 
 <div class="box">
@@ -123,26 +104,11 @@ hr.sep {
 </div>
 
 <script>
-function ts() {
+let lastQuotationId = null;
+
+function nowTime() {
   const d = new Date();
   return d.toLocaleString();
-}
-
-function log(msg, cls = "info") {
-  const el = document.getElementById("log");
-  const div = document.createElement("div");
-  div.className = "line " + (cls || "");
-  div.textContent = `[${ts()}] ${msg}`;
-  el.appendChild(div);          // ✅ CHRONOLOGISCH
-  el.scrollTop = el.scrollHeight;
-}
-
-function sep() {
-  const el = document.getElementById("log");
-  const hr = document.createElement("hr");
-  hr.className = "sep";
-  el.appendChild(hr);
-  el.scrollTop = el.scrollHeight;
 }
 
 async function readFileBase64(file) {
@@ -153,42 +119,30 @@ async function readFileBase64(file) {
   });
 }
 
-function getPasswordHeader() {
-  const password = document.getElementById("password").value || "";
-  return password ? { "x-tool-password": password } : {};
+function logLine(msg, cls = "info") {
+  const el = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = cls || "";
+  div.textContent = `[${nowTime()}] ${msg}`;
+  // ✅ chronologisch: neue Zeilen UNTEN
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
 }
 
-function printTechnical(technical) {
-  if (!technical) return;
-
-  log("—— Lexware API (technical) ——", "info");
-
-  if (technical.httpStatus != null) log("HTTP-Status: " + technical.httpStatus, "info");
-
-  if (technical.meta) {
-    const m = technical.meta;
-    if (m.message) log("message: " + m.message, "info");
-    if (m.timestamp) log("timestamp: " + m.timestamp, "info");
-    if (m.path) log("path: " + m.path, "info");
-    if (m.traceId) log("traceId: " + m.traceId, "info");
-    if (m.requestId) log("requestId: " + m.requestId, "info");
-    if (m.details && Array.isArray(m.details)) {
-      log("details:", "info");
-      m.details.forEach(d => log("  - " + JSON.stringify(d), "info"));
-    }
-  }
-
-  if (technical.raw) {
-    log("raw:", "info");
-    try { log(JSON.stringify(technical.raw, null, 2), "info"); }
-    catch { log(String(technical.raw), "info"); }
+function logJson(title, obj, cls="info") {
+  logLine(title, cls);
+  try {
+    const pretty = JSON.stringify(obj, null, 2);
+    logLine(pretty, cls);
+  } catch {
+    logLine(String(obj), cls);
   }
 }
 
 function logErrorsFromSummary(summary) {
   if (!summary || !Array.isArray(summary.errors) || !summary.errors.length) return;
 
-  log("Details zu den Fehlern:", "err");
+  logLine('Details zu den Fehlern:', 'info');
   summary.errors.forEach(err => {
     const line = [
       err.sheet ? `[${err.sheet}]` : '',
@@ -197,205 +151,156 @@ function logErrorsFromSummary(summary) {
       '→',
       err.message || ''
     ].filter(Boolean).join(' ');
-    log("  - " + line, "err");
+    logLine('  - ' + line, 'err');
   });
 }
 
 function logWarningsFromSummary(summary) {
   if (!summary || !Array.isArray(summary.warnings) || !summary.warnings.length) return;
-
-  log("Hinweise / Warnungen:", "info");
+  logLine('Hinweise / Warnungen:', 'info');
   summary.warnings.forEach(w => {
     const line = [
       w.sheet ? `[${w.sheet}]` : '',
       w.row ? `Zeile ${w.row}` : '',
+      '→',
       w.message || ''
     ].filter(Boolean).join(' ');
-    log("  - " + line, "info");
+    logLine('  - ' + line, 'info');
   });
 }
 
-async function postExcel(endpoint, extraBody = {}) {
+function getAuthHeaders() {
+  const password = document.getElementById("password").value;
+  const headers = {};
+  if (password) headers["x-tool-password"] = password;
+  return headers;
+}
+
+async function callApi(endpoint, extraBody = {}) {
   const fileInput = document.getElementById("file");
   const password = document.getElementById("password").value;
   const allowPriceOverride = document.getElementById("override").checked;
 
   if (!fileInput.files[0]) {
-    log("Bitte zuerst eine Excel-Datei auswählen.", "err");
+    logLine("Bitte zuerst eine Excel-Datei auswählen.", "err");
     return null;
   }
 
   const excelData = await readFileBase64(fileInput.files[0]);
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ excelData, password, allowPriceOverride, ...extraBody })
-  });
-
-  return await res.json();
-}
-
-async function runTest() {
-  sep();
-  log("Aktion: /api/test-excel", "info");
-
+  let data;
   try {
-    const data = await postExcel("/api/test-excel");
-    if (!data) return;
-
-    if (!data.ok) {
-      log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Unbekannt"}`, "err");
-      if (data.data?.summary) {
-        logErrorsFromSummary(data.data.summary);
-        logWarningsFromSummary(data.data.summary);
-      }
-      if (data.technical) printTechnical(data.technical);
-      return;
-    }
-
-    log("🟢 " + (data.message || "Test erfolgreich — keine kritischen Fehler."), "ok");
-    if (data.data?.summary) logWarningsFromSummary(data.data.summary);
-  } catch (e) {
-    console.error(e);
-    log("❌ Netzwerk- oder Serverfehler beim Test.", "err");
-  }
-}
-
-async function runCreate(finalize) {
-  sep();
-  log("Aktion: /api/create-offer (finalize=" + (finalize ? "true" : "false") + ")", "info");
-
-  try {
-    const data = await postExcel("/api/create-offer", { finalize: !!finalize });
-    if (!data) return;
-
-    if (!data.ok) {
-      log(`❌ Fehler (${data.status || "UNBEKANNT"}): ${data.message || "Unbekannt"}`, "err");
-      if (data.data?.summary) {
-        logErrorsFromSummary(data.data.summary);
-        logWarningsFromSummary(data.data.summary);
-      }
-      if (data.technical) printTechnical(data.technical);
-      return;
-    }
-
-    const qid = data.data?.quotationId || null;
-    log("✅ Angebot erstellt — ID: " + (qid || "(keine ID zurückgegeben)"), "ok");
-    if (qid) document.getElementById("quotationId").value = qid;
-
-    if (data.data?.summary) logWarningsFromSummary(data.data.summary);
-  } catch (e) {
-    console.error(e);
-    log("❌ Netzwerk- oder Serverfehler beim Erstellen.", "err");
-  }
-}
-
-async function downloadTemplate() {
-  sep();
-  log("Aktion: Template herunterladen (/api/template.xlsx)", "info");
-
-  try {
-    const r = await fetch("/api/template.xlsx", { method: "GET", headers: { ...getPasswordHeader() } });
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-
-    if (ct.includes("application/json")) {
-      const j = await r.json();
-      log(`❌ Template Fehler (${j.status || "ERROR"}): ${j.message || "Unbekannt"}`, "err");
-      if (j.technical) printTechnical(j.technical);
-      return;
-    }
-
-    if (!r.ok) {
-      log("❌ Template Download fehlgeschlagen (HTTP " + r.status + ").", "err");
-      return;
-    }
-
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "lexware_template.xlsx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    log("✅ Template heruntergeladen (Dropdown & Artikel-Lookup automatisch).", "ok");
-  } catch (e) {
-    console.error(e);
-    log("❌ Template Download fehlgeschlagen (Netzwerk/Server).", "err");
-  }
-}
-
-async function downloadPdf() {
-  sep();
-  const id = (document.getElementById("quotationId").value || "").trim();
-  if (!id) {
-    log("Bitte Quotation ID eingeben (oder erst Angebot erstellen).", "err");
-    return;
-  }
-
-  log("Aktion: PDF herunterladen (/api/download-pdf?id=...)", "info");
-
-  try {
-    const r = await fetch("/api/download-pdf?id=" + encodeURIComponent(id), {
-      method: "GET",
-      headers: { ...getPasswordHeader() }
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ excelData, password, allowPriceOverride, ...extraBody })
     });
 
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("application/json")) {
-      const j = await r.json();
-      log(`❌ PDF Fehler (${j.status || "ERROR"}): ${j.message || "Unbekannt"}`, "err");
-      if (j.technical) printTechnical(j.technical);
-      return;
-    }
-
-    if (!r.ok) {
-      log("❌ PDF Download fehlgeschlagen (HTTP " + r.status + ").", "err");
-      return;
-    }
-
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "quotation.pdf";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    log("✅ PDF heruntergeladen.", "ok");
+    data = await res.json();
   } catch (e) {
     console.error(e);
-    log("❌ PDF Download fehlgeschlagen (Netzwerk/Server).", "err");
+    logLine("❌ Netzwerk- oder Serverfehler beim API-Aufruf.", "err");
+    return null;
   }
+
+  console.log("API Antwort:", data);
+
+  if (!data.ok) {
+    const status = data.status || 'UNBEKANNT';
+    const msg = data.message || 'Keine genaue Fehlermeldung vorhanden.';
+    logLine(`❌ Fehler (${status}): ${msg}`, "err");
+
+    // ✅ Technical Details immer sichtbar
+    if (data.technical) {
+      logJson("—— Technical (Lexware/Lexoffice API) ——", data.technical, "info");
+    }
+
+    // Summary Errors
+    if (data.data && data.data.summary) {
+      logErrorsFromSummary(data.data.summary);
+      logWarningsFromSummary(data.data.summary);
+    }
+
+    return data;
+  }
+
+  // Erfolg
+  if (data.data && data.data.quotationId) {
+    lastQuotationId = data.data.quotationId;
+    document.getElementById("btnPdf").disabled = false;
+    logLine("✅ Angebot erstellt — Quotation ID: " + lastQuotationId, "ok");
+  } else {
+    logLine("🟢 Test erfolgreich — keine kritischen Fehler.", "ok");
+  }
+
+  if (data.data && data.data.summary) {
+    logWarningsFromSummary(data.data.summary);
+  }
+
+  return data;
 }
 
-// Buttons
-document.getElementById("btnTemplate").onclick = () => downloadTemplate();
-document.getElementById("btnTest").onclick = () => runTest();
-document.getElementById("btnOffer").onclick = () => runCreate(false);
-document.getElementById("btnFinalize").onclick = () => runCreate(true);
-document.getElementById("btnPdf").onclick = () => downloadPdf();
+// --- Buttons ---
+document.getElementById("btnTest").onclick = () => {
+  logLine("Starte Testmodus…", "info");
+  callApi("/api/test-excel");
+};
 
-// Systemstatus
-fetch("/api/ping")
+document.getElementById("btnOfferDraft").onclick = () => {
+  logLine("Erstelle Angebot als ENTWURF (finalize=false)…", "info");
+  callApi("/api/create-offer", { finalize: false });
+};
+
+document.getElementById("btnOfferFinalize").onclick = () => {
+  logLine("Erstelle & FINALISIERE Angebot (finalize=true)…", "info");
+  callApi("/api/create-offer", { finalize: true });
+};
+
+// Template Download
+document.getElementById("btnTemplateAuto").onclick = async () => {
+  const pw = document.getElementById("password").value;
+  const url = pw ? `/api/template.xlsx?password=${encodeURIComponent(pw)}` : `/api/template.xlsx`;
+  logLine("Lade Template (Auto/TTL)…", "info");
+  window.location.href = url;
+};
+
+document.getElementById("btnTemplateStatic").onclick = () => {
+  logLine("Lade Template (statisch)…", "info");
+  window.location.href = `/templates/lexware_template.xlsx`;
+};
+
+// PDF Download
+document.getElementById("btnPdf").onclick = () => {
+  if (!lastQuotationId) {
+    logLine("Keine Quotation ID vorhanden. Bitte zuerst Angebot erstellen.", "err");
+    return;
+  }
+  const pw = document.getElementById("password").value;
+  const url = pw
+    ? `/api/download-pdf?id=${encodeURIComponent(lastQuotationId)}&password=${encodeURIComponent(pw)}`
+    : `/api/download-pdf?id=${encodeURIComponent(lastQuotationId)}`;
+
+  logLine("Lade PDF…", "info");
+  window.location.href = url;
+};
+
+// Systemstatus prüfen
+fetch("/api/ping", { headers: { ...getAuthHeaders() } })
   .then(r => r.json())
   .then(d => {
     const sys = document.getElementById("sys");
+    const sys2 = document.getElementById("sys2");
+
     if (!d.ok) {
       sys.textContent = "Backend antwortet, aber ok=false.";
       return;
     }
+
     sys.textContent =
-      "Backend erreichbar — Rate-Limiter: " + d.minIntervalMs + " ms — Passwort: " +
-      (d.passwordProtected ? "aktiv" : "aus") +
-      " — Template TTL: " + (d.templateTtlMs ? Math.round(d.templateTtlMs/60000) + " min" : "?");
+      `Backend erreichbar — Rate-Limiter: ${d.minIntervalMs} ms — Passwort: ${d.passwordProtected ? "aktiv" : "aus"}`;
+
+    sys2.textContent =
+      `Finalize-Default: ${d.finalizeDefault ? "true" : "false"} • Template TTL: ${Math.round((d.templateTtlMs||0)/60000)} min • API: ${d.apiBaseUrl}`;
   })
   .catch(() => {
     document.getElementById("sys").textContent = "❌ Backend nicht erreichbar.";
