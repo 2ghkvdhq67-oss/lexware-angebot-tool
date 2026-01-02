@@ -1,8 +1,6 @@
 'use strict';
 
-// ✅ SAFEST: dotenv optional (Render braucht dotenv nicht zwingend)
-try { require('dotenv').config(); }
-catch (e) { console.warn('[BOOT] dotenv nicht verfügbar – übersprungen (OK auf Render).'); }
+require('dotenv').config();
 
 const path = require('path');
 const fs = require('fs');
@@ -11,23 +9,11 @@ const crypto = require('crypto');
 const express = require('express');
 const axios = require('axios');
 const XLSX = require('xlsx');
-const ExcelJS = require('exceljs');
 
 const app = express();
 app.use(express.json({ limit: '25mb' }));
 
-// ✅ Stabilität auf Render: echte Ursache im Log statt "exited early"
-process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] unhandledRejection:', reason);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[FATAL] uncaughtException:', err);
-  process.exit(1);
-});
-
-// ------------------------------------------------------------
 // ENV
-// ------------------------------------------------------------
 const API_KEY = process.env.LEXOFFICE_API_KEY || process.env.LEXWARE_API_KEY || '';
 const API_BASE_URL = (process.env.LEXOFFICE_API_BASE_URL || process.env.LEXWARE_API_BASE_URL || 'https://api.lexware.io')
   .replace(/\/+$/, '');
@@ -47,9 +33,7 @@ const MIN_INTERVAL_MS = Number(process.env.LEXWARE_MIN_INTERVAL_MS || '0');
 // TTL für dynamisches Template: 10 Minuten
 const TEMPLATE_TTL_MS = 10 * 60 * 1000;
 
-// ------------------------------------------------------------
-// Static: public + templates (statisch bleibt erhalten!)
-// ------------------------------------------------------------
+// Static: public + templates
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/templates', express.static(path.join(__dirname, 'templates')));
 
@@ -83,9 +67,7 @@ app.get('/templates/lexware_template.xlsx', (req, res) => {
   return res.sendFile(filePath);
 });
 
-// ------------------------------------------------------------
-// Helpers: technical payload (bombensicher)
-// ------------------------------------------------------------
+// Helpers: technical payload
 function safeJson(v) {
   try {
     if (v === undefined) return null;
@@ -133,9 +115,7 @@ function fail(res, payload) {
   return res.json({ ok: false, ...payload });
 }
 
-// ------------------------------------------------------------
 // Auth: Basic Auth optional ODER TOOL_PASSWORD im Body/Query/Header
-// ------------------------------------------------------------
 function parseBasicAuth(header) {
   if (!header || !header.startsWith('Basic ')) return null;
   const b64 = header.slice(6);
@@ -160,7 +140,6 @@ function basicAuthMiddleware(req, res, next) {
 function toolPasswordMiddleware(req, res, next) {
   if (!TOOL_PASSWORD) return next();
 
-  // wichtig: GET Downloads können kein Body-Passwort schicken -> Header/Query erlaubt
   const supplied =
     req.body?.password ||
     req.query?.password ||
@@ -181,9 +160,7 @@ function authMiddleware(req, res, next) {
   return toolPasswordMiddleware(req, res, next);
 }
 
-// ------------------------------------------------------------
 // Rate Limit: TokenBucket 2 req/s + optional MIN_INTERVAL_MS + retry 429
-// ------------------------------------------------------------
 class TokenBucket {
   constructor({ capacity, refillPerSec }) {
     this.capacity = capacity;
@@ -269,9 +246,7 @@ async function lexwareRequest({ method, url, headers, data, responseType, accept
   return { status: 429, data: { message: 'Rate limit exceeded (client retries exhausted)' } };
 }
 
-// ------------------------------------------------------------
 // Excel helper
-// ------------------------------------------------------------
 function sheetToJson(wb, name) {
   const sh = wb.Sheets[name];
   return sh ? XLSX.utils.sheet_to_json(sh, { defval: '' }) : null;
@@ -311,15 +286,26 @@ function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-// ------------------------------------------------------------
+function normalizeTitle(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 // Artikel Cache + Artikel API
-// ------------------------------------------------------------
 const articleCache = {
   byId: new Map(),
   list: null,
   fetchedAt: 0,
-  ttlMs: TEMPLATE_TTL_MS // 10 Minuten
+  ttlMs: TEMPLATE_TTL_MS
 };
+
+function clearArticleCache() {
+  articleCache.byId = new Map();
+  articleCache.list = null;
+  articleCache.fetchedAt = 0;
+}
 
 async function getArticleById(articleId) {
   if (!articleId) return null;
@@ -340,7 +326,8 @@ async function getArticleById(articleId) {
   return null;
 }
 
-async function listAllArticlesCached() {
+async function listAllArticlesCached(forceRefresh = false) {
+  if (forceRefresh) clearArticleCache();
   if (articleCache.list && (Date.now() - articleCache.fetchedAt) < articleCache.ttlMs) return articleCache.list;
 
   const all = [];
@@ -370,9 +357,7 @@ async function listAllArticlesCached() {
   return all;
 }
 
-// ------------------------------------------------------------
 // UnitPrice builder (AUTO)
-// ------------------------------------------------------------
 function buildUnitPriceFromNetGross({ net, gross, taxRate }) {
   const tr = Number(taxRate ?? 19);
   let netAmount = net != null ? Number(net) : null;
@@ -413,29 +398,12 @@ function buildUnitPriceFromArticle(articleObj) {
   return buildUnitPriceFromNetGross({ net, gross, taxRate });
 }
 
-// ------------------------------------------------------------
 // Excel -> Quotation Payload
-// ------------------------------------------------------------
 async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverride }) {
   const errors = [];
   const warnings = [];
   const autoNamedLineItems = [];
   const byType = {};
-
-  // ✅ articleTitle→articleId Map (einmal pro Datei)
-  let titleToId = null;
-  async function ensureTitleMap() {
-    if (titleToId) return titleToId;
-    const list = await listAllArticlesCached();
-    titleToId = new Map();
-    for (const a of (list || [])) {
-      const t = String(a.title || '').trim();
-      const id = String(a.id || '').trim();
-      if (!t || !id) continue;
-      if (!titleToId.has(t)) titleToId.set(t, id);
-    }
-    return titleToId;
-  }
 
   const wb = XLSX.read(Buffer.from(excelBase64, 'base64'), { type: 'buffer' });
 
@@ -449,7 +417,8 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   if (errors.length) return { ok: false, payload: null, summary: { errors, warnings } };
 
   const angebot = sheetRowsToKeyValueObject(angebotRows) || angebotRows[0] || {};
-  const taxType = String(angebot.taxType || angebot.TaxType || angebot.TAXTYPE || '').trim();
+  let taxType = String(angebot.taxType || angebot.TaxType || angebot.TAXTYPE || '').trim();
+  taxType = normalizeTitle(taxType); // net/gross robust
   if (!taxType) errors.push({ sheet: 'Angebot', row: 2, field: 'taxType', message: 'taxType ist Pflicht (z. B. „gross“ oder „net“).' });
 
   const kunde = sheetRowsToKeyValueObject(kundeRows) || kundeRows[0] || {};
@@ -476,19 +445,47 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
   const lineItems = [];
 
+  // Artikel-Liste einmal laden (für articleTitle-Mapping), cached/TTL
+  const allArticles = await listAllArticlesCached(false);
+  const articlesByNormTitle = new Map();
+  const articlesByNormNumber = new Map();
+  for (const a of allArticles) {
+    if (a?.title) articlesByNormTitle.set(normalizeTitle(a.title), a);
+    if (a?.articleNumber) articlesByNormNumber.set(normalizeTitle(a.articleNumber), a);
+  }
+
   for (let i = 0; i < posRows.length; i++) {
     const row = posRows[i];
     const excelRow = i + 2;
 
     const type = toLowerTrim(row.type);
-
     let articleId = String(row.articleId || row.articleID || '').trim();
-    const articleTitle = String(row.articleTitle || '').trim();
 
-    // ✅ Excel-Formelfehler wie #NAME? / #NV / etc. → ignorieren
-    if (articleId && articleId.startsWith('#')) {
-      warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleId war ein Excel-Formelfehler (${articleId}) → ignoriert.` });
-      articleId = '';
+    // Excel hat oft articleTitle Dropdown
+    const articleTitleRaw = String(row.articleTitle || row.articleText || '').trim();
+    const articleTitleNorm = normalizeTitle(articleTitleRaw);
+
+    // Mapping: articleTitle -> articleId (wenn articleId leer)
+    if (!articleId && articleTitleNorm) {
+      let match = articlesByNormTitle.get(articleTitleNorm) || articlesByNormNumber.get(articleTitleNorm) || null;
+
+      // 2. Chance: contains-unique (z.B. wenn Excel doppelte Spaces hat)
+      if (!match) {
+        const contains = allArticles.filter(a => normalizeTitle(a.title).includes(articleTitleNorm));
+        if (contains.length === 1) match = contains[0];
+      }
+
+      if (match?.id) {
+        articleId = match.id;
+        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitleRaw}" → articleId automatisch gesetzt.` });
+      } else {
+        // Hauptursache ist oft TTL/Cache oder Tippfehler
+        warnings.push({
+          sheet: 'Positionen',
+          row: excelRow,
+          message: `articleTitle "${articleTitleRaw}" konnte nicht gemappt werden (kein Treffer). Tipp: Artikel-Lookup/Cache aktualisieren oder Titel exakt aus Dropdown wählen.`
+        });
+      }
     }
 
     let name = String(row.name || '').trim();
@@ -501,7 +498,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     const taxRatePercentage = numOrNull(row.taxRatePercentage ?? row.taxRate ?? row.tax);
     const discountPercent = numOrNull(row.discountPercent ?? row.discount);
 
-    const hasAny = type || articleId || articleTitle || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
+    const hasAny = type || articleId || articleTitleRaw || name || description || qty || unitName || unitPriceAmount || taxRatePercentage || discountPercent;
     if (!hasAny) continue;
 
     if (!type) {
@@ -527,20 +524,14 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       continue;
     }
 
-    // ✅ Phase-1 Komfort: articleTitle → articleId mappen (falls articleId leer)
-    if (!articleId && articleTitle) {
-      const map = await ensureTitleMap();
-      const hit = map.get(articleTitle);
-      if (hit) {
-        articleId = hit;
-        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
-      } else {
-        warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
-      }
-    }
-
     if ((type === 'material' || type === 'service') && !articleId) {
-      errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: 'articleId ist Pflicht bei type=material/service (oder articleTitle wählen).' });
+      // Hier machen wir es absichtlich HART: material/service braucht Artikel
+      errors.push({
+        sheet: 'Positionen',
+        row: excelRow,
+        field: 'articleId',
+        message: 'articleId ist Pflicht bei type=material/service (nutze Dropdown articleTitle oder trage die ID ein).'
+      });
       continue;
     }
 
@@ -570,19 +561,13 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       warnings.push({ sheet: 'Positionen', row: excelRow, message: `Name war leer → automatisch gesetzt: "${name}".` });
     }
 
-    const item = {
-      type,
-      name,
-      description: description || undefined,
-      quantity: qty,
-      unitName
-    };
+    const item = { type, name, description: description || undefined, quantity: qty, unitName };
 
     if (articleId && (type === 'material' || type === 'service')) {
       item.id = articleId;
     }
 
-    // --- AUTO unitPrice ---
+    // AUTO unitPrice
     const canUseExcelPrice =
       unitPriceAmount !== null &&
       !(type === 'material' || type === 'service') &&
@@ -674,9 +659,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   return { ok: true, payload, summary };
 }
 
-// ------------------------------------------------------------
 // Idempotency (gegen 3x Erstellung)
-// ------------------------------------------------------------
 const inFlight = new Map();
 
 function hashRequest({ excelData, allowPriceOverride, finalize }) {
@@ -690,75 +673,9 @@ function hashRequest({ excelData, allowPriceOverride, finalize }) {
     .digest('hex');
 }
 
-// ------------------------------------------------------------
-// ✅ Dynamisches Template (10 Minuten TTL)
-// ------------------------------------------------------------
-const templateCache = {
-  buffer: null,
-  createdAt: 0
-};
+// Dynamisches Template (10 Minuten TTL)
+const templateCache = { buffer: null, createdAt: 0 };
 
-// ✅ Master-Template mit Dropdowns/Validierungen beibehalten (ExcelJS)
-//    - lädt /templates/Lexware_Template.xlsx (oder erste .xlsx)
-//    - aktualisiert nur das Sheet "Artikel-Lookup"
-//    - schreibt als Buffer zurück (Validierungen/Formeln bleiben erhalten)
-async function generateTemplateBufferFromMaster(articles) {
-  const templatesDir = path.join(__dirname, 'templates');
-  const preferred = [
-    'Lexware_Template.xlsx',
-    'lexware_template.xlsx',
-    'Lexware_Template.XLSX',
-    'lexware_template.XLSX'
-  ].map(n => path.join(templatesDir, n));
-
-  let masterPath = preferred.find(p => fs.existsSync(p));
-
-  if (!masterPath) {
-    try {
-      const candidates = fs.existsSync(templatesDir)
-        ? fs.readdirSync(templatesDir).filter(f => f.toLowerCase().endsWith('.xlsx'))
-        : [];
-      if (candidates.length) masterPath = path.join(templatesDir, candidates[0]);
-    } catch { /* ignore */ }
-  }
-
-  if (!masterPath || !fs.existsSync(masterPath)) {
-    return null; // Signal: kein Master vorhanden
-  }
-
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(masterPath);
-
-  const ws = wb.getWorksheet('Artikel-Lookup');
-  if (!ws) return null;
-
-  // Header-Zeile (Row 1) bleibt bestehen; ab Row 2 löschen wir alte Daten
-  const rowCount = ws.rowCount || 0;
-  if (rowCount > 1) {
-    ws.spliceRows(2, rowCount - 1);
-  }
-
-  const rows = (articles || []).map(a => ([
-    a.id || '',
-    a.title || '',
-    a.articleNumber || '',
-    a.type || '',
-    a.unitName || '',
-    a.price?.netPrice ?? '',
-    a.price?.grossPrice ?? '',
-    a.price?.leadingPrice ?? '',
-    a.price?.taxRate ?? '',
-    a.archived ?? '',
-    a.version ?? ''
-  ]));
-
-  for (const r of rows) ws.addRow(r);
-
-  const buffer = await wb.xlsx.writeBuffer();
-  return Buffer.from(buffer);
-}
-
-// ✅ Fallback Workbook (falls Master nicht vorhanden)
 function buildTemplateWorkbook(articles) {
   const wb = XLSX.utils.book_new();
 
@@ -780,15 +697,14 @@ function buildTemplateWorkbook(articles) {
   });
   XLSX.utils.book_append_sheet(wb, shArticles, 'Artikel-Lookup');
 
-  const angebot = [
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
     { Feld: 'taxType', Wert: 'net', Hinweis: 'Pflicht: net oder gross (entspricht Lexware taxConditions.taxType)' }
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(angebot), 'Angebot');
+  ]), 'Angebot');
 
-  const kunde = [
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
     { Feld: 'kind', Wert: 'company', Hinweis: 'company oder person' },
     { Feld: 'name', Wert: '', Hinweis: 'Pflicht: Firmenname (company) oder Vollname (person)' },
-    { Feld: 'email', Wert: '', Hinweis: 'Optional, aber sehr hilfreich fürs Matching' },
+    { Feld: 'email', Wert: '', Hinweis: 'Optional, aber hilfreich fürs Matching' },
     { Feld: 'contactPerson', Wert: '', Hinweis: 'Optional' },
     { Feld: 'street', Wert: '', Hinweis: 'Optional' },
     { Feld: 'zip', Wert: '', Hinweis: 'Optional' },
@@ -796,48 +712,29 @@ function buildTemplateWorkbook(articles) {
     { Feld: 'countryCode', Wert: 'DE', Hinweis: 'ISO 3166-1 alpha-2, z.B. DE' },
     { Feld: 'phone', Wert: '', Hinweis: 'Optional' },
     { Feld: 'contactId', Wert: '', Hinweis: 'Optional: Lexware Contact ID, wenn du sie kennst' }
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kunde), 'Kunde');
+  ]), 'Kunde');
 
-  const posHeader = [
-    'pos','type','articleTitle','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
-  ];
+  const posHeader = ['pos','type','articleTitle','articleId','name','description','quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'];
   const posExample = [
-    {
-      pos: 1, type: 'custom', articleTitle: '', articleId: '', name: 'DTF Druck Brust 10×8 cm',
-      description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk',
-      unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: ''
-    },
-    {
-      pos: 2, type: 'text', articleTitle: '', articleId: '', name: 'Lieferzeit / Hinweis',
-      description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '',
-      unitPriceAmount: '', taxRatePercentage: '', discountPercent: ''
-    },
-    {
-      pos: 3, type: 'material', articleTitle: '', articleId: '(aus Artikel-Lookup id kopieren)', name: '',
-      description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '',
-      taxRatePercentage: '', discountPercent: ''
-    }
+    { pos: 1, type: 'custom', articleTitle: '', articleId: '', name: 'DTF Druck Brust 10×8 cm', description: '1-farbig, inkl. Positionierung', quantity: 25, unitName: 'Stk', unitPriceAmount: 6.9, taxRatePercentage: 19, discountPercent: '' },
+    { pos: 2, type: 'text', articleTitle: '', articleId: '', name: 'Lieferzeit / Hinweis', description: 'Druckfreigabe erforderlich. Lieferzeit ca. 7–10 Werktage.', quantity: '', unitName: '', unitPriceAmount: '', taxRatePercentage: '', discountPercent: '' },
+    { pos: 3, type: 'material', articleTitle: '(aus Dropdown wählen)', articleId: '', name: '', description: '', quantity: 25, unitName: 'Stk', unitPriceAmount: '', taxRatePercentage: '', discountPercent: '' }
   ];
-  const shPos = XLSX.utils.json_to_sheet(posExample, { header: posHeader });
-  XLSX.utils.book_append_sheet(wb, shPos, 'Positionen');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(posExample, { header: posHeader }), 'Positionen');
 
-  const help = [
-    { Schritt: 1, Hinweis: 'Artikel-Lookup: gewünschte articleId kopieren oder articleTitle nutzen' },
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+    { Schritt: 1, Hinweis: 'Artikel-Lookup: articleTitle im Dropdown wählen oder articleId kopieren' },
     { Schritt: 2, Hinweis: 'Angebot: taxType setzen (net/gross)' },
     { Schritt: 3, Hinweis: 'Kunde: name ist Pflicht' },
     { Schritt: 4, Hinweis: 'Positionen: type + quantity > 0 + unitName Pflicht (außer text)' },
-    { Schritt: 5, Hinweis: 'material/service: articleId Pflicht, Preis wird automatisch aus Artikelstamm gesetzt' },
-    { Schritt: 6, Hinweis: 'custom ohne articleId: unitPriceAmount Pflicht' }
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(help), 'Anleitung');
+    { Schritt: 5, Hinweis: 'material/service: Artikel Pflicht (articleTitle oder articleId), Preis automatisch aus Artikelstamm' },
+    { Schritt: 6, Hinweis: 'custom ohne Artikel: unitPriceAmount Pflicht' }
+  ]), 'Anleitung');
 
   return wb;
 }
 
-// ------------------------------------------------------------
 // API
-// ------------------------------------------------------------
 app.get('/api/ping', (req, res) => {
   ok(res, {
     status: 'OK',
@@ -851,6 +748,7 @@ app.get('/api/ping', (req, res) => {
   });
 });
 
+// ✅ /api/articles?refresh=1 -> Cache sofort aktualisieren
 app.get('/api/articles', authMiddleware, async (req, res) => {
   try {
     if (!API_KEY) {
@@ -861,8 +759,9 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
         technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
       });
     }
-    const list = await listAllArticlesCached();
-    ok(res, { status: 'SUCCESS', data: { count: list.length, articles: list } });
+    const force = String(req.query.refresh || '').trim() === '1';
+    const list = await listAllArticlesCached(force);
+    ok(res, { status: 'SUCCESS', data: { count: list.length, refreshed: force, articles: list } });
   } catch (err) {
     fail(res, {
       stage: 'articles',
@@ -873,7 +772,7 @@ app.get('/api/articles', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Dynamisches Template (auth + TTL 10min) – automatisch, Dropdown bleibt erhalten
+// ✅ /api/template.xlsx?refresh=1 -> Cache + Template neu bauen
 app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
   try {
     if (!API_KEY) {
@@ -886,30 +785,18 @@ app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
       });
     }
 
+    const force = String(req.query.refresh || '').trim() === '1';
     const now = Date.now();
 
-    if (templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
+    if (!force && templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
       return res.status(200).send(templateCache.buffer);
     }
 
-    const articles = await listAllArticlesCached();
-
-    // 1) Master-Template (Dropdowns/Validierungen) bevorzugen
-    let buffer = null;
-    try {
-      buffer = await generateTemplateBufferFromMaster(articles);
-    } catch (e) {
-      console.warn('[TEMPLATE] Master-Template via ExcelJS fehlgeschlagen:', e?.message || e);
-      buffer = null;
-    }
-
-    // 2) Fallback: Workbook dynamisch bauen
-    if (!buffer) {
-      const wb = buildTemplateWorkbook(articles);
-      buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    }
+    const articles = await listAllArticlesCached(force);
+    const wb = buildTemplateWorkbook(articles);
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     templateCache.buffer = buffer;
     templateCache.createdAt = now;
@@ -917,7 +804,6 @@ app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
     return res.status(200).send(buffer);
-
   } catch (err) {
     return res.status(200).json({
       ok: false,
@@ -1103,6 +989,5 @@ app.get('/api/download-pdf', authMiddleware, async (req, res) => {
   }
 });
 
-// ------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Server läuft auf Port', PORT));
