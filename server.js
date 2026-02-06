@@ -288,6 +288,16 @@ async function lexwareRequest({ method, url, headers, data, responseType, accept
 }
 
 // ------------------------------------------------------------
+// UUID / URL extractor (Backend)
+// ------------------------------------------------------------
+function extractLexwareUuid(input) {
+  const s = String(input || '').trim();
+  const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+  const m = s.match(uuidRegex);
+  return m ? m[0] : null;
+}
+
+// ------------------------------------------------------------
 // Excel helper
 // ------------------------------------------------------------
 function sheetToJson(wb, name) {
@@ -358,7 +368,7 @@ const articleCache = {
   byId: new Map(),
   list: null,
   fetchedAt: 0,
-  ttlMs: TEMPLATE_TTL_MS // 10 Minuten
+  ttlMs: TEMPLATE_TTL_MS
 };
 
 function clearArticleCache() {
@@ -506,9 +516,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     phone: String(kunde.phone || '').trim() || undefined
   };
 
-  // --------------------------------------------------------
-  // ✅ Mapping: articleNumber -> articleId (priorität) -> dann articleTitle
-  // --------------------------------------------------------
+  // Mapping articleNumber/title -> articleId
   const needsMapping = posRows.some(r => {
     const type = toLowerTrim(r.type);
     const title = String(r.articleTitle || r.articleText || r.article || '').trim();
@@ -524,8 +532,8 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
   if (needsMapping) {
     const articles = await listAllArticlesCached(false);
 
-    titleToIds = new Map();   // lower(title) -> [id]
-    numberToIds = new Map();  // lower(articleNumber) -> [id]
+    titleToIds = new Map();
+    numberToIds = new Map();
 
     for (const a of (articles || [])) {
       const id = String(a.id || '').trim();
@@ -581,40 +589,28 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
 
     byType[type] = (byType[type] || 0) + 1;
 
-    // ✅ Auto-map (1) articleNumber, (2) articleTitle
+    // Auto-map
     if (!articleId && (type === 'material' || type === 'service' || type === 'custom') && (numberToIds || titleToIds)) {
-      // (1) via articleNumber
       if (articleNumber && numberToIds) {
         const hits = numberToIds.get(articleNumber.toLowerCase()) || [];
         if (hits.length === 1) {
           articleId = hits[0];
           warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleNumber "${articleNumber}" → articleId automatisch gesetzt.` });
         } else if (hits.length > 1) {
-          errors.push({
-            sheet: 'Positionen',
-            row: excelRow,
-            field: 'articleNumber',
-            message: `articleNumber "${articleNumber}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleId direkt setzen.`
-          });
+          errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleNumber', message: `articleNumber "${articleNumber}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleId direkt setzen.` });
           continue;
         } else {
           warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleNumber "${articleNumber}" konnte nicht gemappt werden (kein Treffer).` });
         }
       }
 
-      // (2) via articleTitle (nur wenn immer noch leer)
       if (!articleId && articleTitle && titleToIds) {
         const hits = titleToIds.get(articleTitle.toLowerCase()) || [];
         if (hits.length === 1) {
           articleId = hits[0];
           warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" → articleId automatisch gesetzt.` });
         } else if (hits.length > 1) {
-          errors.push({
-            sheet: 'Positionen',
-            row: excelRow,
-            field: 'articleTitle',
-            message: `articleTitle "${articleTitle}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleNumber oder articleId setzen.`
-          });
+          errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleTitle', message: `articleTitle "${articleTitle}" ist nicht eindeutig (${hits.length} Treffer). Bitte articleNumber oder articleId setzen.` });
           continue;
         } else {
           warnings.push({ sheet: 'Positionen', row: excelRow, message: `articleTitle "${articleTitle}" konnte nicht gemappt werden (kein Treffer).` });
@@ -647,12 +643,7 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
     if (articleId) {
       articleObj = await getArticleById(articleId);
       if (!articleObj) {
-        errors.push({
-          sheet: 'Positionen',
-          row: excelRow,
-          field: 'articleId',
-          message: `Artikel konnte nicht geladen werden (articleId=${articleId}).`
-        });
+        errors.push({ sheet: 'Positionen', row: excelRow, field: 'articleId', message: `Artikel konnte nicht geladen werden (articleId=${articleId}).` });
         continue;
       }
     }
@@ -669,19 +660,12 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       warnings.push({ sheet: 'Positionen', row: excelRow, message: `Name war leer → automatisch gesetzt: "${name}".` });
     }
 
-    const item = {
-      type,
-      name,
-      description: description || undefined,
-      quantity: qty,
-      unitName
-    };
+    const item = { type, name, description: description || undefined, quantity: qty, unitName };
 
     if (articleId && (type === 'material' || type === 'service')) {
       item.id = articleId;
     }
 
-    // --- AUTO unitPrice ---
     const canUseExcelPrice =
       unitPriceAmount !== null &&
       !(type === 'material' || type === 'service') &&
@@ -699,31 +683,17 @@ async function parseExcelAndBuildQuotationPayload(excelBase64, { allowPriceOverr
       if (articleId) {
         const up = buildUnitPriceFromArticle(articleObj);
         if (!up) {
-          errors.push({
-            sheet: 'Positionen',
-            row: excelRow,
-            field: 'unitPriceAmount',
-            message: `unitPrice fehlt/ist unvollständig im Artikelstamm (articleId=${articleId}).`
-          });
+          errors.push({ sheet: 'Positionen', row: excelRow, field: 'unitPriceAmount', message: `unitPrice fehlt/ist unvollständig im Artikelstamm (articleId=${articleId}).` });
           continue;
         }
         item.unitPrice = up;
 
         if (unitPriceAmount === null || type === 'material' || type === 'service') {
-          warnings.push({
-            sheet: 'Positionen',
-            row: excelRow,
-            message: `Preis automatisch aus Artikelstamm gesetzt (articleId=${articleId}).`
-          });
+          warnings.push({ sheet: 'Positionen', row: excelRow, message: `Preis automatisch aus Artikelstamm gesetzt (articleId=${articleId}).` });
         }
       } else {
         if (unitPriceAmount === null) {
-          errors.push({
-            sheet: 'Positionen',
-            row: excelRow,
-            field: 'unitPriceAmount',
-            message: 'Preis ist Pflicht, wenn keine articleId gesetzt ist.'
-          });
+          errors.push({ sheet: 'Positionen', row: excelRow, field: 'unitPriceAmount', message: 'Preis ist Pflicht, wenn keine articleId gesetzt ist.' });
           continue;
         }
         const rate = taxRatePercentage !== null ? taxRatePercentage : 19;
@@ -870,271 +840,164 @@ function buildTemplateWorkbook(articles) {
 }
 
 // ------------------------------------------------------------
-// API
+// ✅ Excel Export aus bestehendem Angebot (UUID oder komplette URL)
 // ------------------------------------------------------------
-app.get('/api/ping', (req, res) => {
-  ok(res, {
-    status: 'OK',
-    passwordProtected: !!(TOOL_PASSWORD || (APP_USER && APP_PASS)),
-    passwordMode: (APP_USER && APP_PASS) ? 'basic' : (TOOL_PASSWORD ? 'toolPassword' : 'none'),
-    allowPriceOverrideDefault: ALLOW_PRICE_OVERRIDE_DEFAULT,
-    minIntervalMs: MIN_INTERVAL_MS,
-    apiBaseUrl: API_BASE_URL,
-    finalizeDefault: FINALIZE_DEFAULT,
-    templateTtlMs: TEMPLATE_TTL_MS,
-    axiosTimeoutMs: AXIOS_TIMEOUT_MS
+function findTemplateFilePath() {
+  const templatesDir = path.join(__dirname, 'templates');
+  const preferred = [
+    'Lexware_Template.xlsx',
+    'lexware_template.xlsx',
+    'Lexware_Template_FIXED.xlsx',
+    'Lexware_Template_NAMED.xlsx',
+    'lexware_template-5.xlsx',
+    'lexware_template-4.xlsx'
+  ].map(n => path.join(templatesDir, n));
+
+  let filePath = preferred.find(p => fs.existsSync(p));
+
+  if (!filePath) {
+    try {
+      const candidates = fs.existsSync(templatesDir)
+        ? fs.readdirSync(templatesDir).filter(f => f.toLowerCase().endsWith('.xlsx'))
+        : [];
+      if (candidates.length) filePath = path.join(templatesDir, candidates[0]);
+    } catch { /* ignore */ }
+  }
+
+  return filePath && fs.existsSync(filePath) ? filePath : null;
+}
+
+function setKeyValueSheet(wb, sheetName, kv) {
+  // erwartet Template als Key/Value Tabelle mit Spalten Feld/Wert
+  const sh = wb.Sheets[sheetName];
+  if (!sh) return false;
+
+  const rows = XLSX.utils.sheet_to_json(sh, { defval: '' });
+  const obj = sheetRowsToKeyValueObject(rows);
+  if (!obj) return false;
+
+  // Update rows: Feld -> Wert
+  const fieldKey = Object.keys(rows[0] || {}).find(k => ['Feld','feld','Field','field'].includes(k));
+  const valueKey = Object.keys(rows[0] || {}).find(k => ['Wert','wert','Value','value','val'].includes(k));
+  if (!fieldKey || !valueKey) return false;
+
+  for (const r of rows) {
+    const key = String(r[fieldKey] || '').trim();
+    if (!key) continue;
+    if (kv[key] !== undefined) r[valueKey] = kv[key];
+  }
+
+  const newSh = XLSX.utils.json_to_sheet(rows, { header: Object.keys(rows[0] || { Feld:'', Wert:'', Hinweis:'' }) });
+  wb.Sheets[sheetName] = newSh;
+  return true;
+}
+
+async function exportQuotationToTemplateXlsx(quotationId) {
+  const templatePath = findTemplateFilePath();
+  if (!templatePath) {
+    return { ok: false, error: 'Template-Datei nicht gefunden in /templates.' };
+  }
+
+  // 1) Quotation laden
+  const qRes = await lexwareRequest({
+    method: 'GET',
+    url: `${API_BASE_URL}/v1/quotations/${encodeURIComponent(quotationId)}`
   });
-});
 
-app.get('/api/articles', authMiddleware, async (req, res) => {
-  try {
-    if (!API_KEY) {
-      return fail(res, {
-        stage: 'config',
-        status: 'CONFIG_ERROR',
-        message: 'API Key fehlt.',
-        technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
-      });
-    }
-    const forceRefresh = String(req.query.refresh || '').trim() === '1';
-    const list = await listAllArticlesCached(forceRefresh);
-    ok(res, { status: 'SUCCESS', data: { count: list.length, articles: list } });
-  } catch (err) {
-    fail(res, {
-      stage: 'articles',
-      status: 'ERROR',
-      message: err.message,
-      technical: buildTechnical({ httpStatus: 500, raw: { message: 'ARTICLES_EXCEPTION' }, err })
-    });
+  if (!(qRes.status >= 200 && qRes.status < 300)) {
+    return { ok: false, error: 'Lexware API Fehler beim Laden des Angebots.', technical: buildTechnical({ httpStatus: qRes.status, raw: qRes.data }) };
   }
-});
 
-// ✅ Dynamisches Template (auth + TTL 10min)
-app.get('/api/template.xlsx', authMiddleware, async (req, res) => {
-  try {
-    if (!API_KEY) {
-      return res.status(200).json({
-        ok: false,
-        stage: 'template',
-        status: 'CONFIG_ERROR',
-        message: 'API Key fehlt.',
-        technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
-      });
-    }
+  const quotation = qRes.data || {};
+  const taxType = quotation?.taxConditions?.taxType || quotation?.taxConditions?.taxType?.toString?.() || '';
 
-    const now = Date.now();
-    if (templateCache.buffer && (now - templateCache.createdAt) < TEMPLATE_TTL_MS) {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
-      return res.status(200).send(templateCache.buffer);
-    }
+  // 2) Template öffnen
+  const wb = XLSX.readFile(templatePath);
 
-    const articles = await listAllArticlesCached(false);
-    const wb = buildTemplateWorkbook(articles);
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-    templateCache.buffer = buffer;
-    templateCache.createdAt = now;
-
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="lexware_template.xlsx"');
-    return res.status(200).send(buffer);
-  } catch (err) {
-    return res.status(200).json({
-      ok: false,
-      stage: 'template',
-      status: 'ERROR',
-      message: err.message,
-      technical: buildTechnical({ httpStatus: 500, raw: { message: 'TEMPLATE_EXCEPTION' }, err })
-    });
+  // 3) Angebot sheet befüllen
+  // taxType: net/gross
+  if (taxType) {
+    setKeyValueSheet(wb, 'Angebot', { taxType });
   }
-});
 
-app.post('/api/test-excel', authMiddleware, async (req, res) => {
-  try {
-    const { excelData, allowPriceOverride } = req.body || {};
-    const allow = typeof allowPriceOverride === 'boolean' ? allowPriceOverride : ALLOW_PRICE_OVERRIDE_DEFAULT;
+  // 4) Kunde sheet befüllen (Adresse)
+  const addr = quotation?.address || {};
+  const customerName = addr?.name || '';
+  const kundeKv = {
+    name: customerName,
+    street: addr?.street || '',
+    zip: addr?.zip || '',
+    city: addr?.city || '',
+    countryCode: addr?.countryCode || 'DE',
+    contactPerson: addr?.contactPerson || '',
+    email: addr?.email || '',
+    phone: addr?.phone || '',
+    contactId: addr?.contactId || ''
+  };
+  setKeyValueSheet(wb, 'Kunde', kundeKv);
 
-    if (!excelData) {
-      return fail(res, {
-        stage: 'input',
-        status: 'VALIDATION_ERROR',
-        message: 'Keine Excel-Daten übergeben.',
-        technical: buildTechnical({ httpStatus: 400, raw: { message: 'NO_EXCEL' } })
-      });
-    }
+  // 5) Positionen sheet befüllen
+  const lineItems = Array.isArray(quotation?.lineItems) ? quotation.lineItems : [];
+  const outRows = [];
 
-    const parsed = await parseExcelAndBuildQuotationPayload(excelData, { allowPriceOverride: allow });
+  for (let i = 0; i < lineItems.length; i++) {
+    const li = lineItems[i] || {};
+    const type = String(li.type || '').trim().toLowerCase();
+    const isText = type === 'text';
 
-    if (!parsed.ok) {
-      return fail(res, {
-        stage: 'validation',
-        status: 'VALIDATION_ERROR',
-        message: 'Excel enthält Validierungsfehler. Details siehe errors.',
-        data: { summary: parsed.summary }
-      });
-    }
+    const articleId = li.id || ''; // bei material/service setzen wir id (articleId)
+    let articleTitle = '';
+    let articleNumber = '';
 
-    ok(res, {
-      stage: 'test',
-      status: 'SUCCESS',
-      message: 'Test erfolgreich — keine kritischen Fehler.',
-      data: { summary: parsed.summary }
-    });
-  } catch (err) {
-    fail(res, {
-      stage: 'test',
-      status: 'ERROR',
-      message: err.message,
-      technical: buildTechnical({ httpStatus: 500, raw: { message: 'TEST_EXCEPTION' }, err })
-    });
-  }
-});
-
-app.post('/api/create-offer', authMiddleware, async (req, res) => {
-  const startedAt = Date.now();
-
-  try {
-    const { excelData, allowPriceOverride, finalize } = req.body || {};
-    const allow = typeof allowPriceOverride === 'boolean' ? allowPriceOverride : ALLOW_PRICE_OVERRIDE_DEFAULT;
-    const doFinalize = typeof finalize === 'boolean' ? finalize : FINALIZE_DEFAULT;
-
-    if (!excelData) {
-      return fail(res, {
-        stage: 'input',
-        status: 'VALIDATION_ERROR',
-        message: 'Keine Excel-Daten übergeben.',
-        technical: buildTechnical({ httpStatus: 400, raw: { message: 'NO_EXCEL' } })
-      });
-    }
-
-    if (!API_KEY) {
-      return fail(res, {
-        stage: 'config',
-        status: 'CONFIG_ERROR',
-        message: 'API Key fehlt.',
-        technical: buildTechnical({ httpStatus: 500, raw: { message: 'NO_API_KEY' } })
-      });
-    }
-
-    const key = hashRequest({ excelData, allowPriceOverride: allow, finalize: doFinalize });
-    if (inFlight.has(key)) {
-      const cached = await inFlight.get(key);
-      return res.json(cached);
-    }
-
-    const promise = (async () => {
-      const parsed = await parseExcelAndBuildQuotationPayload(excelData, { allowPriceOverride: allow });
-
-      if (!parsed.ok) {
-        return {
-          ok: false,
-          stage: 'validation',
-          status: 'VALIDATION_ERROR',
-          message: 'Excel enthält Validierungsfehler. Details siehe errors.',
-          data: { summary: parsed.summary }
-        };
+    if (articleId) {
+      const a = await getArticleById(articleId);
+      if (a) {
+        articleTitle = a.title || '';
+        articleNumber = a.articleNumber || '';
       }
-
-      const url = `${API_BASE_URL}/v1/quotations${doFinalize ? '?finalize=true' : ''}`;
-      const apiRes = await lexwareRequest({
-        method: 'POST',
-        url,
-        headers: { 'Content-Type': 'application/json' },
-        data: parsed.payload,
-        accept: 'application/json'
-      });
-
-      if (apiRes.status < 200 || apiRes.status >= 300) {
-        return {
-          ok: false,
-          stage: 'lexware-create',
-          status: apiRes.status === 429 ? 'RATE_LIMIT' : 'ERROR',
-          message: apiRes.status === 429 ? 'Rate limit exceeded' : 'Lexware API Fehler',
-          technical: buildTechnical({ httpStatus: apiRes.status, raw: apiRes.data }),
-          data: { summary: parsed.summary }
-        };
-      }
-
-      return {
-        ok: true,
-        stage: 'lexware-create',
-        status: 'SUCCESS',
-        message: 'Angebot erstellt.',
-        data: {
-          quotationId: apiRes.data?.id || null,
-          summary: parsed.summary,
-          ms: Date.now() - startedAt
-        }
-      };
-    })();
-
-    inFlight.set(key, promise);
-    const result = await promise;
-    setTimeout(() => inFlight.delete(key), 15000);
-
-    return res.json(result);
-  } catch (err) {
-    return fail(res, {
-      stage: 'lexware-create',
-      status: 'ERROR',
-      message: err.message || 'Unerwarteter Fehler',
-      technical: buildTechnical({ httpStatus: 500, raw: { message: 'UNHANDLED_EXCEPTION' }, err })
-    });
-  }
-});
-
-app.get('/api/download-pdf', authMiddleware, async (req, res) => {
-  try {
-    const quotationId = String(req.query.id || '').trim();
-    if (!quotationId) return res.status(400).send('Missing id');
-    if (!API_KEY) return res.status(500).send('API Key fehlt');
-
-    const apiRes = await lexwareRequest({
-      method: 'GET',
-      url: `${API_BASE_URL}/v1/quotations/${encodeURIComponent(quotationId)}/file`,
-      responseType: 'arraybuffer',
-      accept: '*/*'
-    });
-
-    if (apiRes.status < 200 || apiRes.status >= 300) {
-      const tech = buildTechnical({ httpStatus: apiRes.status, raw: apiRes.data });
-
-      const msg = (tech?.raw && typeof tech.raw === 'object' && tech.raw.message) ? String(tech.raw.message) : '';
-      const isDraftPdf =
-        apiRes.status === 409 &&
-        msg.toLowerCase().includes('status') &&
-        msg.toLowerCase().includes('draft') &&
-        msg.toLowerCase().includes('cannot be downloaded');
-
-      return res.status(200).json({
-        ok: false,
-        stage: 'lexware-pdf',
-        status: apiRes.status === 429 ? 'RATE_LIMIT' : 'ERROR',
-        message: isDraftPdf
-          ? 'PDF nicht verfügbar: Angebot ist im ENTWURF (draft). Bitte im Modus FINAL erstellen.'
-          : (apiRes.status === 429 ? 'Rate limit exceeded' : 'Lexware PDF Fehler'),
-        technical: tech
-      });
     }
 
-    const contentType = apiRes.headers?.['content-type'] || 'application/pdf';
-    const disposition = apiRes.headers?.['content-disposition'] || 'attachment; filename="quotation.pdf"';
+    const name = li.name || '';
+    const description = li.description || '';
 
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', disposition);
-    return res.status(200).send(Buffer.from(apiRes.data));
-  } catch (err) {
-    return res.status(200).json({
-      ok: false,
-      stage: 'lexware-pdf',
-      status: 'ERROR',
-      message: err.message,
-      technical: buildTechnical({ httpStatus: 500, raw: { message: 'PDF_EXCEPTION' }, err })
+    const quantity = li.quantity ?? '';
+    const unitName = li.unitName ?? '';
+
+    let unitPriceAmount = '';
+    let taxRatePercentage = '';
+    let discountPercent = '';
+
+    // unitPrice: netAmount/grossAmount + taxRatePercentage
+    const up = li.unitPrice || null;
+    if (up && typeof up === 'object') {
+      taxRatePercentage = up.taxRatePercentage ?? '';
+      if (taxType === 'gross') unitPriceAmount = up.grossAmount ?? '';
+      else unitPriceAmount = up.netAmount ?? '';
+    }
+
+    if (li.discountPercentage != null) discountPercent = li.discountPercentage;
+
+    outRows.push({
+      pos: i + 1,
+      type: type || (isText ? 'text' : ''),
+      articleTitle: articleTitle || (articleId ? name : ''),
+      articleNumber,
+      articleId: articleId || '',
+      name,
+      description,
+      quantity: isText ? '' : quantity,
+      unitName: isText ? '' : unitName,
+      unitPriceAmount: isText ? '' : unitPriceAmount,
+      taxRatePercentage: isText ? '' : taxRatePercentage,
+      discountPercent: isText ? '' : discountPercent
     });
   }
-});
 
-// ------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Server läuft auf Port', PORT));
+  // Wenn Template ein bestehendes Tabellen-Sheet hat, ersetzen wir komplett
+  if (wb.Sheets['Positionen']) {
+    const headers = [
+      'pos','type','articleTitle','articleNumber','articleId','name','description',
+      'quantity','unitName','unitPriceAmount','taxRatePercentage','discountPercent'
+    ];
+    const newSh = XLSX.utils.json_to_sheet(outRows, { header: headers });
+   
