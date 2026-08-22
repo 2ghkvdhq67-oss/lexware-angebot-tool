@@ -9,8 +9,8 @@ Herr Stefan Oliver Maier, geboren am 27. Januar 1976 in Tübingen, war vom
 1. April 2018 bis zum [AUSTRITT] in der Kern-Liebers Firmengruppe beschäftigt,
 zuletzt seit dem 1. Mai 2022 bei der KERN-LIEBERS TEXTILE GMBH, Schramberg.
 
-[VARIANTE VORBESCHÄFTIGUNG: Von April 2018 bis April 2022 war er als
-[POSITION] bei der [GESELLSCHAFT] tätig.]
+Vom 1. April 2018 bis zum 30. April 2022 war er innerhalb der Firmengruppe
+als [POSITION] bei der Saxonia Textile Parts GmbH, [ORT], tätig.
 
 Die KERN-LIEBERS TEXTILE GMBH ist als Division Tectile Teil der international
 tätigen Kern-Liebers Firmengruppe und [FIRMENBESCHREIBUNG: Produkte, Märkte,
@@ -56,7 +56,7 @@ als auch fachlich über mehrere Standorte und Ländergesellschaften hinweg.
 
 ## Noch offen
 - Letzter Arbeitstag (= Zeugnisdatum)
-- Vorbeschäftigung: Gesellschaft und Position(en) 04/2018 - 04/2022
+- Saxonia Textile Parts GmbH: Position(en) 04/2018 - 04/2022 + Ort
 - Teamgröße, Länder/Standorte
 - Firmenbeschreibung (Produkte, Märkte, Mitarbeiterzahl)
 - Anrede: "Herr Maier" oder durchgängig "Stefan Oliver Maier"
