@@ -32,15 +32,18 @@ Forecasting. Ebenfalls seit April 2018 verantwortete er den Vertrieb der
 Tochtergesellschaft Naplafa, die im Jahr 2021 in unser Unternehmen integriert
 wurde.
 
-Zum 1. Februar 2025 wurde ihm zusätzlich die Verantwortung für den Bereich
-Customer Service sowie das Produktmanagement des Produktbereichs Warp
-übertragen. In dieser erweiterten Funktion als Director Customer Service und
-Produktmanager Warp berichtete er unmittelbar an den Vice President Sales.
-Er führte ein Customer-Service-Team von sieben Mitarbeitenden disziplinarisch
-und steuerte darüber hinaus fachlich die Vertriebsmitarbeitenden der
-Niederlassungen unserer Firmengruppe in den USA, in Indien und in China. Die
-übrigen Märkte betreute er über ein weltweites Netz aus Landesvertretungen und
-Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
+Zum 1. Februar 2025 wurde ihm zusätzlich die Verantwortung für den Customer
+Service (Vertriebsinnendienst) sowie - nunmehr auch organisatorisch
+ausgewiesen - für das Produktmanagement des Produktbereichs Warp übertragen.
+Zugleich übernahm er die Leitung und Koordination der gesamten Absatz- und
+Jahresplanung der Division Textile. In dieser erweiterten Funktion als
+Director Customer Service und Produktmanager Warp berichtete er unmittelbar an
+den Vice President Sales. Er führte ein Team von sieben Mitarbeitenden
+disziplinarisch und steuerte darüber hinaus fachlich die
+Vertriebsmitarbeitenden der Niederlassungen unserer Firmengruppe in den USA,
+in Indien und in China. Die übrigen Märkte betreute er über ein weltweites
+Netz aus Landesvertretungen und Handelspartnern, das er auswählte, steuerte
+und weiterentwickelte.
 
 ## 3. Aufgaben
 
@@ -51,12 +54,15 @@ Zum Aufgabengebiet von Herrn Maier gehörten insbesondere:
 - die Entwicklung und Umsetzung der Vertriebsstrategie für die Kundensegmente
   Textilmaschinenhersteller (OEM), Textilproduzenten sowie Hersteller
   technischer Textilien,
+- das Produktmanagement für den Produktbereich Warp,
 - die Betreuung und Weiterentwicklung der Schlüsselkunden einschließlich der
   Verhandlung von Preisen, Konditionen und Rahmenverträgen,
 - der Aufbau, die Steuerung und die Weiterentwicklung des internationalen
   Vertriebsnetzes aus Niederlassungen, Landesvertretungen und Handelspartnern,
 - die Leitung des Vertriebs der Tochtergesellschaft Naplafa mit Präzisionsteilen
   für Maschinen zur Herstellung technischer Vliesstoffe (Malimo-/Nähwirktechnik),
+- die Verantwortung für die Jahresplanung des Produktbereichs Wirk für sämtliche
+  Gesellschaften der Division Textile,
 - die Absatz-, Umsatz- und Budgetplanung einschließlich Forecasting sowie das
   regelmäßige Reporting an die Geschäftsleitung,
 - die Analyse von Markt- und Wettbewerbsentwicklungen sowie die Ableitung
@@ -64,13 +70,16 @@ Zum Aufgabengebiet von Herrn Maier gehörten insbesondere:
 - die Repräsentation des Unternehmens auf internationalen Fachmessen und bei
   Kunden weltweit.
 
-Ab dem 1. Februar 2025 kamen hinzu:
+Mit der Erweiterung seines Verantwortungsbereichs zum 1. Februar 2025 kamen
+hinzu:
 
-- das Produktmanagement für den Produktbereich Warp einschließlich
-  [PORTFOLIO / ROADMAP / NEUPRODUKTE / SCHNITTSTELLE ENTWICKLUNG+PRODUKTION],
 - die Leitung des Customer Service (Vertriebsinnendienst) mit sieben
-  Mitarbeitenden einschließlich [AUFTRAGSABWICKLUNG / ANGEBOTSWESEN /
-  REKLAMATIONSBEARBEITUNG / LIEFERTERMINSTEUERUNG - BITTE KONKRETISIEREN].
+  Mitarbeitenden einschließlich Auftragsabwicklung, Angebotswesen und
+  Reklamationsbearbeitung,
+- die Steuerung und Priorisierung der Liefertermine in enger Abstimmung mit
+  Produktion und Disposition,
+- die Leitung und Koordination der gesamten Absatz- und Jahresplanung der
+  Division Textile.
 
 ## 4. Erfolge
 
@@ -126,8 +135,6 @@ verlief ohne Beeinträchtigung der Liefertreue gegenüber unseren Kunden.
 - Anrede im Text: "Herr Maier"
 
 ## Noch offen
-- Produktmanagement Warp: Inhalte konkretisieren
-- Customer Service: Aufgabeninhalte konkretisieren
 - Erfolge mit Zahlen unterlegen (Block 3)
 - Naplafa: Produkte, Umsatz, Zeitraum der Vertriebsleitung
 - Block 4 Beurteilungsschwerpunkte
