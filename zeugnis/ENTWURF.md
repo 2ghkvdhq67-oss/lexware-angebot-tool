@@ -77,14 +77,16 @@ Ab dem 1. Februar 2025 kamen hinzu:
 ### 4.1 Integration der SAXONIA TEXTILE PARTS GmbH (Formulierungsentwurf)
 
 Eine herausragende Leistung erbrachte Herr Maier bei der Integration der
-SAXONIA TEXTILE PARTS GmbH in die KERN-LIEBERS TEXTILE GMBH. Er verantwortete
-maßgeblich die Steuerung dieses Projekts: Er entschied über die Fortführung
-des Produktportfolios am neuen Standort, stimmte die zur Absicherung der
-Lieferfähigkeit erforderlichen Sicherheitsbestände ab und stellte durch die
-Schulung der Mitarbeitenden in Schramberg den vollständigen Transfer des
-Produkt- und Prozesswissens sicher. Die Verlagerung verlief ohne
-Beeinträchtigung der Liefertreue gegenüber unseren Kunden. [LETZTER SATZ NUR,
-WENN ZUTREFFEND]
+SAXONIA TEXTILE PARTS GmbH in die KERN-LIEBERS TEXTILE GMBH, deren
+vertriebsseitige Steuerung er maßgeblich verantwortete. Er entschied über die
+Fortführung des Produktportfolios am neuen Standort, stimmte die zur
+Absicherung der Lieferfähigkeit erforderlichen Sicherheitsbestände ab und
+verantwortete die Überführung sämtlicher Kundenbeziehungen und Stammdaten in
+die Strukturen und Systeme (SAP) der aufnehmenden Gesellschaft. Darüber hinaus
+stellte er durch die Schulung der Mitarbeitenden am Standort Schramberg den
+vollständigen Transfer des Produkt- und Prozesswissens sicher. Die Verlagerung
+verlief ohne Beeinträchtigung der Liefertreue gegenüber unseren Kunden.
+[LETZTER SATZ NUR, WENN ZUTREFFEND]
 
 ### 4.2 Weiteres Rohmaterial (Zahlen folgen)
 
