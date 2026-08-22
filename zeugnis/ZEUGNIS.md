@@ -41,6 +41,8 @@ Eine herausragende Leistung erbrachte Herr Maier bei der Integration der SAXONIA
 
 Besonders hervorzuheben ist ferner, dass es Herrn Maier gelang, den Umsatzanteil außerhalb des OEM-Kanals von rund 10 % auf rund 40 % zu steigern und damit die Abhängigkeit von einzelnen Großkunden deutlich zu verringern. Maßgeblich hierfür war der gezielte Ausbau des Endkundengeschäfts, insbesondere in China, der zugleich den Zugang zu den dortigen Textilmaschinenherstellern eröffnete: Den Kundenkreis in diesem Segment erweiterte Herr Maier von einem – dem Marktführer – auf sieben Hersteller. Dieser Erfolg ist angesichts der in diesen Märkten ausgeprägten Lieferantenpräferenzen bemerkenswert; er beruhte maßgeblich auf der genauen Kenntnis der markt- und anwendungsseitigen Anforderungen sowie der technischen Eigenschaften unserer Produkte, die Herr Maier in die Gespräche einbrachte.
 
+Über sein Tagesgeschäft hinaus brachte sich Herr Maier in mehreren bereichsübergreifenden Projekten ein. Er baute die Zusammenarbeit mit einem führenden Textilmaschinenhersteller zu einer strategischen Kooperation aus [DETAIL OEM-KOOPERATION]. Ferner initiierte und konzipierte er eine eigene CRM-Anwendung, mit der Kundenbedürfnisse systematisch erfasst und für die Vertriebs- und Produktplanung nutzbar gemacht werden [DETAIL CRM]. Darüber hinaus unterstützte er maßgeblich den Aufbau des neuen B2B-Portals mit integriertem Onlineshop und Händlerfunktion [DETAIL PORTAL].
+
 Herr Maier erledigte alle ihm übertragenen Aufgaben stets zu unserer vollsten Zufriedenheit.
 
 Sein Verhalten gegenüber Vorgesetzten, Mitarbeitenden, Kollegen und Kunden war stets vorbildlich. Aufgrund seiner offenen, verbindlichen und hilfsbereiten Art war er bei allen Beteiligten gleichermaßen anerkannt und geschätzt.
