@@ -6,9 +6,11 @@ Arbeitsentwurf. Platzhalter in [eckigen Klammern] = noch offen.
 ## 1. Einleitung / Beschäftigungsangaben
 
 Herr Stefan Oliver Maier, geboren am 27. Januar 1976 in Tübingen, war vom
-[EINTRITT KONZERN] bis zum [AUSTRITT] in der Kern-Liebers Firmengruppe
-beschäftigt, zuletzt seit dem 1. Mai 2022 bei der KERN-LIEBERS TEXTILE GMBH,
-Schramberg.
+1. April 2018 bis zum [AUSTRITT] in der Kern-Liebers Firmengruppe beschäftigt,
+zuletzt seit dem 1. Mai 2022 bei der KERN-LIEBERS TEXTILE GMBH, Schramberg.
+
+[VARIANTE VORBESCHÄFTIGUNG: Von April 2018 bis April 2022 war er als
+[POSITION] bei der [GESELLSCHAFT] tätig.]
 
 Die KERN-LIEBERS TEXTILE GMBH ist als Division Tectile Teil der international
 tätigen Kern-Liebers Firmengruppe und [FIRMENBESCHREIBUNG: Produkte, Märkte,
@@ -45,8 +47,8 @@ als auch fachlich über mehrere Standorte und Ländergesellschaften hinweg.
 ## Festgelegte Parameter
 - Qualifiziertes Endzeugnis, Vergangenheitsform, Note 1 durchgängig
   ("stets zu unserer vollsten Zufriedenheit")
-- Zeugnis über die gesamte Konzernzugehörigkeit (Betriebszugehörigkeit
-  vertraglich angerechnet)
+- Zeugnis über die gesamte Konzernzugehörigkeit ab 01.04.2018
+  (Arbeitsvertrag: "technisches Eintrittsdatum 01.04.2018")
 - Rollenwechsel 02/2025 wird als Verantwortungserweiterung dargestellt
 - Führung: disziplinarisch + fachlich + international
 - Schlussformel: Dank + Bedauern + Zukunftswünsche
@@ -54,7 +56,7 @@ als auch fachlich über mehrere Standorte und Ländergesellschaften hinweg.
 
 ## Noch offen
 - Letzter Arbeitstag (= Zeugnisdatum)
-- Vorbeschäftigung: Gesellschaft, Zeitraum, Position(en)
+- Vorbeschäftigung: Gesellschaft und Position(en) 04/2018 - 04/2022
 - Teamgröße, Länder/Standorte
 - Firmenbeschreibung (Produkte, Märkte, Mitarbeiterzahl)
 - Anrede: "Herr Maier" oder durchgängig "Stefan Oliver Maier"
