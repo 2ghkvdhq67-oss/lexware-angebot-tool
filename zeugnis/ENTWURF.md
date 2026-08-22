@@ -28,8 +28,9 @@ und Textilproduzenten weltweit.
 Vom 1. April 2018 bis zum 31. Januar 2025 verantwortete Herr Maier als
 Director Sales Warp den weltweiten Vertrieb des Produktbereichs Kettenwirken
 (Warp) einschließlich Absatz- und Umsatzplanung, Budgetverantwortung und
-Forecasting. Darüber hinaus übernahm er im Jahr 2021 die Leitung des Vertriebs
-der in unser Unternehmen integrierten Tochtergesellschaft Naplafa.
+Forecasting. Ebenfalls seit April 2018 verantwortete er den Vertrieb der
+Tochtergesellschaft Naplafa, die im Jahr 2021 in unser Unternehmen integriert
+wurde.
 
 Zum 1. Februar 2025 wurde ihm zusätzlich die Verantwortung für den Bereich
 Customer Service sowie das Produktmanagement des Produktbereichs Warp
@@ -51,38 +52,50 @@ Zum Aufgabengebiet von Herrn Maier gehörten insbesondere:
   Textilmaschinenhersteller (OEM), Textilproduzenten sowie Hersteller
   technischer Textilien,
 - die Betreuung und Weiterentwicklung der Schlüsselkunden einschließlich der
-  Verhandlung von Preisen, Konditionen und Rahmenverträgen, [BESTÄTIGEN]
+  Verhandlung von Preisen, Konditionen und Rahmenverträgen,
 - der Aufbau, die Steuerung und die Weiterentwicklung des internationalen
   Vertriebsnetzes aus Niederlassungen, Landesvertretungen und Handelspartnern,
-- die Leitung des Vertriebs der Tochtergesellschaft Naplafa,
+- die Leitung des Vertriebs der Tochtergesellschaft Naplafa mit Präzisionsteilen
+  für Maschinen zur Herstellung technischer Vliesstoffe (Malimo-/Nähwirktechnik),
 - die Absatz-, Umsatz- und Budgetplanung einschließlich Forecasting sowie das
-  regelmäßige Reporting an die Geschäftsleitung, [BESTÄTIGEN]
+  regelmäßige Reporting an die Geschäftsleitung,
 - die Analyse von Markt- und Wettbewerbsentwicklungen sowie die Ableitung
-  daraus resultierender Vertriebs- und Preisstrategien, [BESTÄTIGEN]
+  daraus resultierender Vertriebs- und Preisstrategien,
 - die Repräsentation des Unternehmens auf internationalen Fachmessen und bei
-  Kunden weltweit. [BESTÄTIGEN]
+  Kunden weltweit.
 
 Ab dem 1. Februar 2025 kamen hinzu:
 
 - das Produktmanagement für den Produktbereich Warp einschließlich
   [PORTFOLIO / ROADMAP / NEUPRODUKTE / SCHNITTSTELLE ENTWICKLUNG+PRODUKTION],
-- die Leitung des Bereichs Customer Service mit sieben Mitarbeitenden
-  einschließlich [AUFTRAGSABWICKLUNG / REKLAMATIONSMANAGEMENT / KENNZAHLEN].
+- die Leitung des Customer Service (Vertriebsinnendienst) mit sieben
+  Mitarbeitenden einschließlich [AUFTRAGSABWICKLUNG / ANGEBOTSWESEN /
+  REKLAMATIONSBEARBEITUNG / LIEFERTERMINSTEUERUNG - BITTE KONKRETISIEREN].
 
 ## 4. Erfolge
 
-Rohmaterial (noch zu formulieren und mit Zahlen zu unterlegen):
+### 4.1 Integration der SAXONIA TEXTILE PARTS GmbH (Formulierungsentwurf)
 
-- Ausbau des Geschäfts außerhalb des OEM-Kanals und dadurch spürbare
-  Reduzierung der Abhängigkeit von einzelnen Großkunden
-  -> [ZAHL: Anteil Nicht-OEM vorher/nachher oder Umsatzzuwachs]
+Eine herausragende Leistung erbrachte Herr Maier bei der Integration der
+SAXONIA TEXTILE PARTS GmbH in die KERN-LIEBERS TEXTILE GMBH. Er verantwortete
+maßgeblich die Steuerung dieses Projekts: Er entschied über die Fortführung
+des Produktportfolios am neuen Standort, stimmte die zur Absicherung der
+Lieferfähigkeit erforderlichen Sicherheitsbestände ab und stellte durch die
+Schulung der Mitarbeitenden in Schramberg den vollständigen Transfer des
+Produkt- und Prozesswissens sicher. Die Verlagerung verlief ohne
+Beeinträchtigung der Liefertreue gegenüber unseren Kunden. [LETZTER SATZ NUR,
+WENN ZUTREFFEND]
+
+### 4.2 Weiteres Rohmaterial (Zahlen folgen)
+
+- Ausbau des Geschäfts außerhalb des OEM-Kanals, dadurch Reduzierung der
+  Abhängigkeit von einzelnen Großkunden
+  -> [ZAHL: Anteil Nicht-OEM vorher/nachher]
 - Erschließung neuer, aufstrebender Textilmaschinenhersteller in Asien
   entgegen der dort üblichen Lieferantenpräferenzen
-  -> [ZAHL: Anzahl gewonnener Kunden / Umsatzbeitrag]
-- Integration der Tochtergesellschaft Naplafa (2021) und Übernahme der
-  Vertriebsleitung -> [ERGEBNIS]
-- Integration der SAXONIA TEXTILE PARTS GmbH in die KERN-LIEBERS TEXTILE GMBH
-  (2022) -> [WELCHE ROLLE?]
+  -> [ZAHL: Anzahl Neukunden / Umsatzbeitrag]
+- Integration der Tochtergesellschaft Naplafa (2021) bei durchgehender
+  Vertriebsverantwortung seit 2018
 
 ## 5. Leistungsbeurteilung
 [OFFEN – Note 1]
@@ -111,8 +124,8 @@ Rohmaterial (noch zu formulieren und mit Zahlen zu unterlegen):
 - Anrede im Text: "Herr Maier"
 
 ## Noch offen
-- Aufgabenpunkte mit [BESTÄTIGEN] pruefen
-- Produktmanagement- und Customer-Service-Aufgaben konkretisieren
+- Produktmanagement Warp: Inhalte konkretisieren
+- Customer Service: Aufgabeninhalte konkretisieren
 - Erfolge mit Zahlen unterlegen (Block 3)
 - Naplafa: Produkte, Umsatz, Zeitraum der Vertriebsleitung
 - Block 4 Beurteilungsschwerpunkte
