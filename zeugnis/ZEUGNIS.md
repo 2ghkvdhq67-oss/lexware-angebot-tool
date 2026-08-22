@@ -12,7 +12,7 @@ Zum 1. Februar 2025 wurde ihm zusätzlich die Verantwortung für den Customer Se
 
 Zum Aufgabengebiet von Herrn Maier gehörten insbesondere:
 
-- die weltweite Umsatzverantwortung für den Produktbereich Kettenwirken mit einem Umsatzvolumen von bis zu 27 Mio. Euro jährlich,
+- die weltweite Umsatz- und Deckungsbeitragsverantwortung für den Produktbereich Kettenwirken mit einem Umsatzvolumen von bis zu 27 Mio. Euro jährlich einschließlich der Kalkulation sowie der Festlegung und Sicherstellung der Zielmargen,
 - die Entwicklung und Umsetzung der Vertriebsstrategie für die Kundensegmente Textilmaschinenhersteller (OEM), Textilproduzenten sowie Hersteller technischer Textilien,
 - das Produktmanagement für den Produktbereich Warp,
 - die Betreuung und Weiterentwicklung der Schlüsselkunden einschließlich der Verhandlung von Preisen, Konditionen und Rahmenverträgen,
