@@ -28,7 +28,8 @@ und Textilproduzenten weltweit.
 Vom 1. April 2018 bis zum 31. Januar 2025 verantwortete Herr Maier als
 Director Sales Warp den weltweiten Vertrieb des Produktbereichs Kettenwirken
 (Warp) einschließlich Absatz- und Umsatzplanung, Budgetverantwortung und
-Forecasting.
+Forecasting. Darüber hinaus übernahm er im Jahr 2021 die Leitung des Vertriebs
+der in unser Unternehmen integrierten Tochtergesellschaft Naplafa.
 
 Zum 1. Februar 2025 wurde ihm zusätzlich die Verantwortung für den Bereich
 Customer Service sowie das Produktmanagement des Produktbereichs Warp
@@ -41,10 +42,47 @@ Niederlassungen unserer Firmengruppe in den USA, in Indien und in China. Die
 Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
 
 ## 3. Aufgaben
-[OFFEN – Block 2]
+
+Zum Aufgabengebiet von Herrn Maier gehörten insbesondere:
+
+- die weltweite Umsatzverantwortung für den Produktbereich Kettenwirken mit
+  einem Umsatzvolumen von bis zu 27 Mio. Euro jährlich,
+- die Entwicklung und Umsetzung der Vertriebsstrategie für die Kundensegmente
+  Textilmaschinenhersteller (OEM), Textilproduzenten sowie Hersteller
+  technischer Textilien,
+- die Betreuung und Weiterentwicklung der Schlüsselkunden einschließlich der
+  Verhandlung von Preisen, Konditionen und Rahmenverträgen, [BESTÄTIGEN]
+- der Aufbau, die Steuerung und die Weiterentwicklung des internationalen
+  Vertriebsnetzes aus Niederlassungen, Landesvertretungen und Handelspartnern,
+- die Leitung des Vertriebs der Tochtergesellschaft Naplafa,
+- die Absatz-, Umsatz- und Budgetplanung einschließlich Forecasting sowie das
+  regelmäßige Reporting an die Geschäftsleitung, [BESTÄTIGEN]
+- die Analyse von Markt- und Wettbewerbsentwicklungen sowie die Ableitung
+  daraus resultierender Vertriebs- und Preisstrategien, [BESTÄTIGEN]
+- die Repräsentation des Unternehmens auf internationalen Fachmessen und bei
+  Kunden weltweit. [BESTÄTIGEN]
+
+Ab dem 1. Februar 2025 kamen hinzu:
+
+- das Produktmanagement für den Produktbereich Warp einschließlich
+  [PORTFOLIO / ROADMAP / NEUPRODUKTE / SCHNITTSTELLE ENTWICKLUNG+PRODUKTION],
+- die Leitung des Bereichs Customer Service mit sieben Mitarbeitenden
+  einschließlich [AUFTRAGSABWICKLUNG / REKLAMATIONSMANAGEMENT / KENNZAHLEN].
 
 ## 4. Erfolge
-[OFFEN – Block 3]
+
+Rohmaterial (noch zu formulieren und mit Zahlen zu unterlegen):
+
+- Ausbau des Geschäfts außerhalb des OEM-Kanals und dadurch spürbare
+  Reduzierung der Abhängigkeit von einzelnen Großkunden
+  -> [ZAHL: Anteil Nicht-OEM vorher/nachher oder Umsatzzuwachs]
+- Erschließung neuer, aufstrebender Textilmaschinenhersteller in Asien
+  entgegen der dort üblichen Lieferantenpräferenzen
+  -> [ZAHL: Anzahl gewonnener Kunden / Umsatzbeitrag]
+- Integration der Tochtergesellschaft Naplafa (2021) und Übernahme der
+  Vertriebsleitung -> [ERGEBNIS]
+- Integration der SAXONIA TEXTILE PARTS GmbH in die KERN-LIEBERS TEXTILE GMBH
+  (2022) -> [WELCHE ROLLE?]
 
 ## 5. Leistungsbeurteilung
 [OFFEN – Note 1]
@@ -73,4 +111,8 @@ Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
 - Anrede im Text: "Herr Maier"
 
 ## Noch offen
-- Block 2 Aufgaben, Block 3 Erfolge, Block 4 Schwerpunkte
+- Aufgabenpunkte mit [BESTÄTIGEN] pruefen
+- Produktmanagement- und Customer-Service-Aufgaben konkretisieren
+- Erfolge mit Zahlen unterlegen (Block 3)
+- Naplafa: Produkte, Umsatz, Zeitraum der Vertriebsleitung
+- Block 4 Beurteilungsschwerpunkte
