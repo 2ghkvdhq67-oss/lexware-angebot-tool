@@ -41,7 +41,13 @@ Eine herausragende Leistung erbrachte Herr Maier bei der Integration der SAXONIA
 
 Besonders hervorzuheben ist ferner, dass es Herrn Maier gelang, den Umsatzanteil außerhalb des OEM-Kanals von rund 10 % auf rund 40 % zu steigern und damit die Abhängigkeit von einzelnen Großkunden deutlich zu verringern. Maßgeblich hierfür war der gezielte Ausbau des Endkundengeschäfts, insbesondere in China, der zugleich den Zugang zu den dortigen Textilmaschinenherstellern eröffnete: Den Kundenkreis in diesem Segment erweiterte Herr Maier von einem – dem Marktführer – auf sieben Hersteller. Dieser Erfolg ist angesichts der in diesen Märkten ausgeprägten Lieferantenpräferenzen bemerkenswert; er beruhte maßgeblich auf der genauen Kenntnis der markt- und anwendungsseitigen Anforderungen sowie der technischen Eigenschaften unserer Produkte, die Herr Maier in die Gespräche einbrachte.
 
-Über sein Tagesgeschäft hinaus brachte sich Herr Maier in mehreren bereichsübergreifenden Projekten ein. Er baute die Zusammenarbeit mit einem führenden Textilmaschinenhersteller zu einer strategischen Kooperation aus [DETAIL OEM-KOOPERATION]. Ferner initiierte und konzipierte er eine eigene CRM-Anwendung, mit der Kundenbedürfnisse systematisch erfasst und für die Vertriebs- und Produktplanung nutzbar gemacht werden [DETAIL CRM]. Darüber hinaus unterstützte er maßgeblich den Aufbau des neuen B2B-Portals mit integriertem Onlineshop und Händlerfunktion [DETAIL PORTAL].
+Über sein Tagesgeschäft hinaus brachte sich Herr Maier in mehreren bereichsübergreifenden Projekten ein.
+
+Mit dem marktführenden Textilmaschinenhersteller baute er die bestehende Geschäftsbeziehung zu einer strategischen Partnerschaft aus, die in einem Kooperationsvertrag, einer engen technischen Zusammenarbeit sowie in gemeinsam finanzierten Produktionsanlagen an unserem Standort mündete. Diese Partnerschaft sicherte das Geschäft langfristig ab, führte zu zusätzlichem Umsatz und festigte unsere technische Marktführerschaft.
+
+Da sich das konzernweit vorgegebene CRM-System nicht auf die besonderen Anforderungen unseres Geschäfts zuschneiden ließ, konzipierte und realisierte Herr Maier auf Basis von Microsoft Power Apps eine eigene Vertriebsanwendung. Sie führt Kundenstammdaten, den Maschinenpark unserer Kunden, die Bewertung der Kundenqualität, Wettbewerbsinformationen sowie Besuchsberichte und Vertriebsaktivitäten in einem Werkzeug zusammen und ermöglicht es so, Bedarfe und Potenziale systematisch abzuleiten. Auch unsere Handelspartner band er in die Pflege der Daten und die Bearbeitung von Leads ein. Damit schuf er ohne nennenswerte Investitionen eine passgenaue Lösung, die heute eine wesentliche Grundlage der Vertriebs- und Absatzplanung bildet.
+
+Darüber hinaus unterstützte er maßgeblich den Aufbau des neuen B2B-Portals mit integriertem Onlineshop und Händlerfunktion. [DETAIL PORTAL]
 
 Herr Maier erledigte alle ihm übertragenen Aufgaben stets zu unserer vollsten Zufriedenheit.
 
