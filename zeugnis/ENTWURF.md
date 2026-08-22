@@ -70,7 +70,7 @@ Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
 ## Bestaetigt
 - Austritt / Zeugnisdatum: 31.12.2026
 - Schreibweise: "Division Textile"
+- Anrede im Text: "Herr Maier"
 
 ## Noch offen
-- Anrede: "Herr Maier" oder durchgängig "Stefan Oliver Maier"
 - Block 2 Aufgaben, Block 3 Erfolge, Block 4 Schwerpunkte
