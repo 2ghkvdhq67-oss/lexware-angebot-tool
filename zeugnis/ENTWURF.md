@@ -67,8 +67,10 @@ Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
 - Schlussformel: Dank + Bedauern + Zukunftswünsche
 - Ausgabe: Word (.docx)
 
+## Bestaetigt
+- Austritt / Zeugnisdatum: 31.12.2026
+- Schreibweise: "Division Textile"
+
 ## Noch offen
-- Austrittsdatum bestaetigen: 31.12.2026 (empfohlen) vs. 30.12.2026
 - Anrede: "Herr Maier" oder durchgängig "Stefan Oliver Maier"
-- Schreibweise Division: "Textile" oder "Tectile" (Markenname)?
 - Block 2 Aufgaben, Block 3 Erfolge, Block 4 Schwerpunkte
