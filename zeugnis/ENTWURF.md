@@ -36,7 +36,9 @@ Customer Service sowie das Produktmanagement des Produktbereichs Warp
 Produktmanager Warp berichtete er unmittelbar an den Vice President Sales.
 Er führte ein Customer-Service-Team von sieben Mitarbeitenden disziplinarisch
 und steuerte darüber hinaus fachlich die Vertriebsmitarbeitenden der
-Niederlassungen unserer Firmengruppe in den USA, in Indien und in China.
+Niederlassungen unserer Firmengruppe in den USA, in Indien und in China. Die
+übrigen Märkte betreute er über ein weltweites Netz aus Landesvertretungen und
+Handelspartnern, das er auswählte, steuerte und weiterentwickelte.
 
 ## 3. Aufgaben
 [OFFEN – Block 2]
