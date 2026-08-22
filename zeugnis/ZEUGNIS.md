@@ -27,6 +27,7 @@ Mit der Erweiterung seines Verantwortungsbereichs zum 1. Februar 2025 kamen hinz
 
 - die Leitung des Customer Service (Vertriebsinnendienst) mit sieben Mitarbeitenden einschließlich Auftragsabwicklung, Angebotswesen und Reklamationsbearbeitung,
 - die Steuerung und Priorisierung der Liefertermine in enger Abstimmung mit Produktion und Disposition,
+- die Verantwortung für die weltweite Ausgestaltung der Customer-Service-Prozesse in sämtlichen Niederlassungen der Firmengruppe,
 - die Leitung und Koordination der gesamten Absatz- und Jahresplanung der Division Textile.
 
 Herr Maier verfügte über ein außergewöhnlich fundiertes und breites Fachwissen auf dem Gebiet der maschenbildenden Verfahren, das er in der täglichen Praxis stets sicher und zielgerichtet einsetzte. Seine ausgeprägte Produkt-, Markt- und Branchenkenntnis, insbesondere in der Kettenwirk- und Nähwirktechnik – in der bis zu 10.000 Nadeln gleichzeitig im Eingriff stehen und in ihrer Gleichmäßigkeit exakt mit den übrigen Wirkelementen harmonieren müssen –, machte ihn zu einem gefragten Ansprechpartner für Kunden, Vertriebspartner und Fachbereiche gleichermaßen. Neue technische und marktseitige Entwicklungen verfolgte er aufmerksam und erweiterte sein Wissen kontinuierlich aus eigenem Antrieb.
@@ -43,11 +44,13 @@ Besonders hervorzuheben ist ferner, dass es Herrn Maier gelang, den Umsatzanteil
 
 Über sein Tagesgeschäft hinaus brachte sich Herr Maier in mehreren bereichsübergreifenden Projekten ein.
 
+Die weltweite Vereinheitlichung der Customer-Service-Prozesse in sämtlichen Niederlassungen unserer Firmengruppe führte er als eigenständiges Projekt erfolgreich zum Abschluss. Die Abläufe folgen seither einem einheitlichen Standard.
+
 Mit dem marktführenden Textilmaschinenhersteller baute er die bestehende Geschäftsbeziehung zu einer strategischen Partnerschaft aus, die in einem Kooperationsvertrag, einer engen technischen Zusammenarbeit sowie in gemeinsam finanzierten Produktionsanlagen an unserem Standort mündete. Diese Partnerschaft sicherte das Geschäft langfristig ab, führte zu zusätzlichem Umsatz und festigte unsere technische Marktführerschaft.
 
-Da sich das konzernweit vorgegebene CRM-System nicht auf die besonderen Anforderungen unseres Geschäfts zuschneiden ließ, konzipierte und realisierte Herr Maier auf Basis von Microsoft Power Apps eine eigene Vertriebsanwendung. Sie führt Kundenstammdaten, den Maschinenpark unserer Kunden, die Bewertung der Kundenqualität, Wettbewerbsinformationen sowie Besuchsberichte und Vertriebsaktivitäten in einem Werkzeug zusammen und ermöglicht es so, Bedarfe und Potenziale systematisch abzuleiten. Auch unsere Handelspartner band er in die Pflege der Daten und die Bearbeitung von Leads ein. Damit schuf er ohne nennenswerte Investitionen eine passgenaue Lösung, die heute eine wesentliche Grundlage der Vertriebs- und Absatzplanung bildet.
+Da sich das konzernweit vorgegebene CRM-System nicht auf die besonderen Anforderungen unseres Geschäfts zuschneiden ließ, initiierte Herr Maier eine eigene Vertriebsanwendung auf Basis von Microsoft Power Apps und verantwortete deren fachliche Konzeption; die technische Umsetzung erfolgte durch unsere IT auf Grundlage der von ihm erarbeiteten Anforderungen. Die Anwendung führt Kundenstammdaten, den Maschinenpark unserer Kunden, die Bewertung der Kundenqualität, Wettbewerbsinformationen sowie Besuchsberichte und Vertriebsaktivitäten in einem Werkzeug zusammen und ermöglicht es so, Bedarfe und Potenziale systematisch abzuleiten. Auch unsere Handelspartner band er in die Pflege der Daten und die Bearbeitung von Leads ein. Die Anwendung ist zwischenzeitlich ausgerollt und steht unseren Vertriebsmitarbeitenden mobil auf Tablets zur Verfügung; sie schuf damit ohne nennenswerte Investitionen eine passgenaue Grundlage für die Vertriebs- und Absatzplanung.
 
-Darüber hinaus unterstützte er maßgeblich den Aufbau des neuen B2B-Portals mit integriertem Onlineshop und Händlerfunktion. [DETAIL PORTAL]
+Am Aufbau des neuen B2B-Portals mit integriertem Onlineshop und Händlerfunktion wirkte Herr Maier von Beginn an maßgeblich mit. Er begleitete die Anbieterauswahl, war an der Erstellung des Lastenhefts beteiligt und brachte sich intensiv in die Detailfragen der Umsetzung und der Anpassung an unsere Prozesse ein. Seine langjährige Kundenerfahrung, seine vertriebliche Expertise und seine genaue Kenntnis unserer SAP-Systeme waren dabei eine wesentliche Grundlage für tragfähige Entscheidungen.
 
 Herr Maier erledigte alle ihm übertragenen Aufgaben stets zu unserer vollsten Zufriedenheit.
 
