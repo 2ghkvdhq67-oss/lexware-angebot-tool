@@ -142,4 +142,4 @@ verlief ohne Beeinträchtigung der Liefertreue gegenüber unseren Kunden.
 ## Nachtraege
 - Uebertragung der Laender Sued- und Zentralamerikas auf die nordamerikanische
   Vertriebsgesellschaft, Zusammenfassung zur Region Americas (im Zeugnis eingearbeitet)
-  -> offen: Nutzen/Ergebnis der Massnahme, Zeitpunkt
+  -> erledigt: Ende 2024, Nutzen Markt-/Kundennaehe, gleiche Zeitzone, Umsatzwachstum
