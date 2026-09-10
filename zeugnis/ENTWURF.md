@@ -138,3 +138,8 @@ verlief ohne Beeinträchtigung der Liefertreue gegenüber unseren Kunden.
 - Erfolge mit Zahlen unterlegen (Block 3)
 - Naplafa: Produkte, Umsatz, Zeitraum der Vertriebsleitung
 - Block 4 Beurteilungsschwerpunkte
+
+## Nachtraege
+- Uebertragung der Laender Sued- und Zentralamerikas auf die nordamerikanische
+  Vertriebsgesellschaft, Zusammenfassung zur Region Americas (im Zeugnis eingearbeitet)
+  -> offen: Nutzen/Ergebnis der Massnahme, Zeitpunkt
