@@ -1,7 +1,9 @@
 # Maiershirts – Präsentationsmaster
 
-PowerPoint-Vorlage (Master) im Maiershirts-Look mit Logo, passend zum
-Farbschema des Lexware-Angebots-Tools (dunkles Anthrazit `#0B0F14`, Akzent-Grün `#22C55E`).
+PowerPoint-Vorlage (Master) im Maiershirts-Look mit Logo, nach den
+Brand Colors (Stand Mai 2026): Schwarz `#0f0f0f`, Asparagus `#819E72`,
+Warm Sand `#E8DFD0`, Weiß. Schrift: Inter (Fallback in PowerPoint: Arial/Calibri,
+falls Inter nicht installiert ist – Inter gibt es kostenlos bei Google Fonts).
 
 ## Dateien
 
@@ -9,10 +11,11 @@ Farbschema des Lexware-Angebots-Tools (dunkles Anthrazit `#0B0F14`, Akzent-Grün
 |---|---|
 | `dist/Maiershirts_Master.pptx` | Beispieldeck mit allen Layouts (10 Folien) – zum Kopieren und Anpassen |
 | `dist/Maiershirts_Master.potx` | Vorlage: Doppelklick öffnet eine neue Präsentation mit den Mastern |
-| `assets/logo-dark.png` | Logo für helle Folien (dunkle Schrift) |
-| `assets/logo-light.png` | Logo für dunkle Folien (helle Schrift) |
+| `assets/logo.svg` | Logo als Vektor (Bergmarke + Wortmarke), nachgebaut nach der Originalvorlage |
+| `assets/logo-dark.png` | Logo schwarz für helle Folien |
+| `assets/logo-light.png` | Logo weiß für dunkle Folien |
 | `build.js` | Erzeugt beide Dateien neu (`npm run build`) |
-| `make-logo.js` | Erzeugt die Platzhalter-Wortmarke (`npm run logo`) |
+| `make-logo.js` | Erzeugt Logo-SVG und die beiden PNGs (`npm run logo`) |
 
 ## Master / Layouts
 
@@ -27,9 +30,10 @@ Das Beispieldeck zeigt pro Layout ein Muster: Agenda mit Icon-Zeilen,
 Zwei-Spalten-Folie mit Karten, Kennzahlen, Prozess (4 Schritte),
 Angebotstabelle, natives Diagramm und eine leere Standardfolie.
 
-## Echtes Logo einsetzen
+## Original-Logodatei einsetzen
 
-Die Wortmarke in `assets/` ist ein **Platzhalter**. Sobald das Original-Logo vorliegt:
+Das Logo in `assets/` ist ein Vektor-Nachbau der Originalvorlage. Um stattdessen
+die Originaldatei (z. B. aus `Downloads/firmenlogo`) zu verwenden:
 
 1. `assets/logo-dark.png` durch das Logo für helle Hintergründe ersetzen,
    `assets/logo-light.png` durch die Variante für dunkle Hintergründe

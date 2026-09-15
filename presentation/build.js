@@ -19,22 +19,25 @@ const ReactDOMServer = require('react-dom/server');
 const Fa = require('react-icons/fa');
 const JSZip = require('jszip');
 
-// ---------- Farben (aus dem Maiershirts-Tool übernommen) ----------
+// ---------- Farben: Maiershirts Brand Colors (Stand Mai 2026) ----------
 const C = {
-  dark: '0B0F14',      // Hintergrund Titel/Abschnitt/Abschluss
-  card: '121826',      // Kartenfläche auf dunklem Grund
-  green: '22C55E',     // Akzent
-  greenDark: '15803D', // Akzent-Text auf Weiß
-  greenTint: 'E9F9EF', // Kreis-/Kartenfläche auf Weiß
-  light: 'E5E7EB',     // Text auf dunklem Grund
-  muted: '9AA4B2',     // gedämpfter Text auf dunklem Grund
+  dark: '0F0F0F',      // Schwarz – Text / Struktur / dunkle Blöcke
+  green: '819E72',     // Asparagus – Akzent / Buttons / Highlights
+  greenDark: '677E5B', // Asparagus Dark – Hover / Akzent-Text
+  greenLight: 'A3C095',// Asparagus Light – Badges / leichte Akzente
+  greenTint: 'E3ECDD', // sehr helle Asparagus-Fläche (Kreise auf Weiß)
+  beige: 'E8DFD0',     // Warm Sand – Hintergrund-Sektionen / Karten
+  beigeDark: 'D9D2C5', // Warm Sand dunkel – Linien
+  cream: 'FAF7F2',     // Cream – Body-Hintergrund
   white: 'FFFFFF',
-  text: '111827',      // Text auf Weiß
-  textMuted: '6B7280', // gedämpfter Text auf Weiß
-  grayBg: 'F3F4F6',    // Kartenfläche auf Weiß
-  line: 'E5E7EB',
+  text: '0F0F0F',      // Text auf Weiß
+  textMuted: '5C5C58', // gedämpfter Text auf Weiß
+  light: 'FFFFFF',     // Text auf Schwarz
+  muted: 'CFC8BB',     // gedämpfter Text auf Schwarz (Warm Sand abgedunkelt)
+  grayBg: 'E8DFD0',    // Kartenfläche auf Weiß = Warm Sand
+  line: 'D9D2C5',      // Tabellen-/Trennlinien
 };
-const FONT = 'Calibri';
+const FONT = 'Inter';
 const DIST = path.join(__dirname, 'dist');
 const ASSETS = path.join(__dirname, 'assets');
 
@@ -88,9 +91,9 @@ async function darkBackground(name, circles) {
 async function main() {
   fs.mkdirSync(DIST, { recursive: true });
   // Koordinaten in px auf 1920x1080 (192 px = 1 Zoll)
-  const BG_TITEL = await darkBackground('titel', [[1824, 192, 500, 0.14], [1805, 1000, 250, 0.22]]);
-  const BG_ABSCHNITT = await darkBackground('abschnitt', [[1786, 538, 326, 0.16]]);
-  const BG_ABSCHLUSS = await darkBackground('abschluss', [[96, 998, 442, 0.14]]);
+  const BG_TITEL = await darkBackground('titel', [[1824, 192, 500, 0.22], [1805, 1000, 250, 0.32]]);
+  const BG_ABSCHNITT = await darkBackground('abschnitt', [[1786, 538, 326, 0.24]]);
+  const BG_ABSCHLUSS = await darkBackground('abschluss', [[1880, 40, 300, 0.22]]);
 
   const pres = new pptxgen();
   pres.layout = 'LAYOUT_16x9'; // 10" x 5.625"
@@ -105,7 +108,7 @@ async function main() {
     background: { path: BG_TITEL },
     objects: [
       // dezenter grüner Kreis als Motiv, rechts angeschnitten
-      logo('light', 0.6, 0.55, 3.6, 0.65),
+      logo('light', 0.6, 0.5, 2.2, 1.2),
       { placeholder: { options: { name: 'title', type: 'title', x: 0.6, y: 2.05, w: 7.2, h: 1.3, fontFace: FONT, fontSize: 40, bold: true, color: C.white, valign: 'bottom', margin: 0 }, text: 'Titel der Präsentation' } },
       { placeholder: { options: { name: 'sub', type: 'body', x: 0.6, y: 3.45, w: 7.2, h: 0.7, fontFace: FONT, fontSize: 18, color: C.muted, valign: 'top', margin: 0 }, text: 'Untertitel · Datum' } },
       { text: { text: 'Maiershirts', options: { x: 0.6, y: 5.05, w: 4, h: 0.3, fontFace: FONT, fontSize: 10, color: C.muted, margin: 0 } } },
@@ -117,7 +120,7 @@ async function main() {
     title: 'MS_ABSCHNITT',
     background: { path: BG_ABSCHNITT },
     objects: [
-      logo('light', 0.6, 0.45, 2.4, 0.45),
+      logo('light', 0.6, 0.45, 1.45, 0.8),
       { placeholder: { options: { name: 'num', type: 'body', x: 0.6, y: 1.7, w: 3, h: 0.9, fontFace: FONT, fontSize: 54, bold: true, color: C.green, valign: 'bottom', margin: 0 }, text: '01' } },
       { placeholder: { options: { name: 'title', type: 'title', x: 0.6, y: 2.65, w: 7, h: 1.0, fontFace: FONT, fontSize: 36, bold: true, color: C.white, valign: 'top', margin: 0 }, text: 'Abschnittstitel' } },
       { placeholder: { options: { name: 'sub', type: 'body', x: 0.6, y: 3.7, w: 7, h: 0.6, fontFace: FONT, fontSize: 16, color: C.muted, valign: 'top', margin: 0 }, text: 'Kurzbeschreibung des Abschnitts' } },
@@ -129,8 +132,8 @@ async function main() {
     title: 'MS_INHALT',
     background: { color: C.white },
     objects: [
-      logo('dark', 7.55, 0.38, 1.95, 0.42),
-      { placeholder: { options: { name: 'title', type: 'title', x: 0.5, y: 0.35, w: 6.8, h: 0.75, fontFace: FONT, fontSize: 28, bold: true, color: C.text, valign: 'middle', margin: 0 }, text: 'Folientitel' } },
+      logo('dark', 8.25, 0.3, 1.25, 0.68),
+      { placeholder: { options: { name: 'title', type: 'title', x: 0.5, y: 0.35, w: 7.5, h: 0.75, fontFace: FONT, fontSize: 28, bold: true, color: C.text, valign: 'middle', margin: 0 }, text: 'Folientitel' } },
       { text: { text: 'Maiershirts', options: { x: 0.5, y: 5.15, w: 3, h: 0.3, fontFace: FONT, fontSize: 9, color: C.textMuted, margin: 0 } } },
     ],
     slideNumber: { x: 9.0, y: 5.15, w: 0.5, h: 0.3, fontFace: FONT, fontSize: 9, color: C.textMuted, align: 'right', margin: 0 },
@@ -141,7 +144,7 @@ async function main() {
     title: 'MS_ABSCHLUSS',
     background: { path: BG_ABSCHLUSS },
     objects: [
-      logo('light', 3.0, 1.15, 4.0, 0.75),
+      logo('light', 3.7, 0.7, 2.6, 1.42),
       { placeholder: { options: { name: 'title', type: 'title', x: 1, y: 2.25, w: 8, h: 0.9, align: 'center', fontFace: FONT, fontSize: 36, bold: true, color: C.white, valign: 'middle', margin: 0 }, text: 'Vielen Dank' } },
       { placeholder: { options: { name: 'sub', type: 'body', x: 1, y: 3.2, w: 8, h: 0.9, align: 'center', fontFace: FONT, fontSize: 14, color: C.muted, valign: 'top', margin: 0 }, text: 'Kontakt' } },
     ],
@@ -255,9 +258,9 @@ async function main() {
     stats.forEach(([big, label, note], i) => {
       const x = 0.5 + i * 3.05;
       s.addShape('roundRect', { x, y: 1.5, w: 2.9, h: 2.6, fill: { color: C.grayBg }, line: { color: C.grayBg }, rectRadius: 0.12 });
-      s.addText(big, { x: x + 0.25, y: 1.75, w: 2.4, h: 1.1, fontFace: FONT, fontSize: 54, bold: true, color: C.greenDark, valign: 'middle', margin: 0, isTextBox: true });
-      s.addText(label, { x: x + 0.25, y: 2.95, w: 2.4, h: 0.4, fontFace: FONT, fontSize: 15, bold: true, color: C.text, margin: 0, isTextBox: true });
-      s.addText(note, { x: x + 0.25, y: 3.4, w: 2.4, h: 0.35, fontFace: FONT, fontSize: 11, italic: true, color: C.textMuted, margin: 0, isTextBox: true });
+      s.addText(big, { x: x + 0.25, y: 1.75, w: 2.4, h: 1.1, fontFace: FONT, fontSize: 44, bold: true, color: C.greenDark, valign: 'middle', margin: 0, isTextBox: true });
+      s.addText(label, { x: x + 0.25, y: 2.9, w: 2.4, h: 0.65, fontFace: FONT, fontSize: 14, valign: 'top', bold: true, color: C.text, margin: 0, isTextBox: true });
+      s.addText(note, { x: x + 0.25, y: 3.55, w: 2.4, h: 0.35, fontFace: FONT, fontSize: 11, italic: true, color: C.textMuted, margin: 0, isTextBox: true });
     });
     s.addText('Alle Werte sind Platzhalter und werden vor Verwendung durch echte Kennzahlen ersetzt.', { x: 0.5, y: 4.4, w: 9, h: 0.35, fontFace: FONT, fontSize: 11, color: C.textMuted, margin: 0, isTextBox: true });
     s.addNotes('Kennzahlen-Layout: drei große Zahlen mit Beschriftung. Werte sind Beispiele.');
@@ -279,7 +282,7 @@ async function main() {
     steps.forEach(([head, desc, icon], i) => {
       const x = x0 + i * gap;
       if (i < steps.length - 1) {
-        s.addShape('line', { x: x + d + 0.15, y: yC + d / 2, w: gap - d - 0.3, h: 0, line: { color: C.line, width: 2, endArrowType: 'triangle' } });
+        s.addShape('line', { x: x + d + 0.15, y: yC + d / 2, w: gap - d - 0.3, h: 0, line: { color: C.greenLight, width: 2, endArrowType: 'triangle' } });
       }
       iconCircle(s, icon, x, yC, d, C.greenTint);
       s.addText(String(i + 1), { x: x + d - 0.3, y: yC - 0.1, w: 0.36, h: 0.36, fontFace: FONT, fontSize: 11, bold: true, color: C.white, align: 'center', valign: 'middle', margin: 0, fill: { color: C.greenDark }, shape: 'ellipse', isTextBox: true });
